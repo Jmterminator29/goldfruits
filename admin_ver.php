@@ -10,17 +10,15 @@ $stmt->execute([$id]);
 $d = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$d) die("Solicitud no encontrada.");
 
-// 2. Datos Detallados por Proveedor + Liquidación Guardada (LEFT JOIN)
+// 2. Datos Detallados por Proveedor + Liquidación Guardada
 $stmtOri = $conn->prepare("
     SELECT ao.id as origen_id, p.nombre, ao.tara_asignada, 
            ao.k_cat1, ao.p_cat1, 
            ao.k_cat2, ao.p_cat2, 
            ao.k_rastrojo, ao.p_rastrojo, 
            ao.subtotal,
-           /* Datos guardados previamente en la nueva tabla */
            al.porc_merma as liq_porc,
            al.precio_merma as liq_precio_m,
-           /* Datos físicos de balanza */
            COALESCE((SELECT SUM(peso_bruto) FROM acopios_pesadas WHERE origen_id = ao.id), 0) as total_bruto,
            COALESCE((SELECT SUM(jabas) FROM acopios_pesadas WHERE origen_id = ao.id), 0) as total_jabas
     FROM acopios_origenes ao
@@ -31,7 +29,7 @@ $stmtOri = $conn->prepare("
 $stmtOri->execute([$id]);
 $proveedores = $stmtOri->fetchAll(PDO::FETCH_ASSOC);
 
-// 3. Fotos de Evidencia
+// 3. Fotos
 $stmtPes = $conn->prepare("SELECT * FROM acopios_pesadas WHERE acopio_id = ? ORDER BY numero_tanda ASC");
 $stmtPes->execute([$id]);
 $todas_pesadas = $stmtPes->fetchAll(PDO::FETCH_ASSOC);
@@ -41,7 +39,7 @@ foreach ($todas_pesadas as $p) {
     if ($p['origen_id']) $pesadas_por_origen[$p['origen_id']][] = $p;
 }
 
-// 4. Gastos Operativos de Campo (Fijos)
+// 4. Gastos
 $gastos_fijos = $d['precio_flete'] + $d['subtotal_cosecha'] + $d['subtotal_cargadores'] + $d['subtotal_inspectores'] + $d['viaticos'];
 ?>
 <!DOCTYPE html>
@@ -52,102 +50,64 @@ $gastos_fijos = $d['precio_flete'] + $d['subtotal_cosecha'] + $d['subtotal_carga
     <title>Liquidación Gerencial | <?php echo $d['codigo_unico']; ?></title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap" rel="stylesheet">
     <style>
-        :root {
-            --bg-body: #f8fafc;
-            --surface: #ffffff;
-            --primary: #059669; 
-            --primary-dark: #047857;
-            --accent: #f59e0b; 
-            --text-main: #1e293b;
-            --text-muted: #64748b;
-            --border: #e2e8f0;
-            --danger: #ef4444;
-            --success: #10b981;
-        }
-
+        :root { --bg-body: #f8fafc; --surface: #ffffff; --primary: #059669; --primary-dark: #047857; --accent: #f59e0b; --text-main: #1e293b; --text-muted: #64748b; --border: #e2e8f0; --danger: #ef4444; --success: #10b981; }
         * { box-sizing: border-box; }
         body { font-family: 'Inter', sans-serif; background-color: var(--bg-body); color: var(--text-main); margin: 0; padding-bottom: 140px; font-size: 14px; }
 
         .top-bar { background: var(--surface); border-bottom: 1px solid var(--border); padding: 15px 30px; position: sticky; top: 0; z-index: 50; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05); }
         .brand { font-weight: 800; font-size: 1.2rem; color: var(--primary-dark); display: flex; align-items: center; gap: 10px; }
-        .brand span { color: var(--text-muted); font-weight: 400; font-size: 0.9rem; }
-        .btn-back { text-decoration: none; color: var(--text-muted); font-weight: 600; padding: 8px 16px; border-radius: 8px; transition: all 0.2s; background: #f1f5f9; }
-        .btn-back:hover { background: #e2e8f0; color: var(--text-main); }
+        .btn-back { text-decoration: none; color: var(--text-muted); font-weight: 600; padding: 8px 16px; border-radius: 8px; background: #f1f5f9; }
 
         .container { max-width: 1200px; margin: 40px auto; padding: 0 20px; }
         .section-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); font-weight: 700; margin-bottom: 15px; display: block; }
 
-        /* CARDS */
-        .prov-card { background: var(--surface); border-radius: 16px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.03), 0 4px 6px -2px rgba(0,0,0,0.02); border: 1px solid var(--border); margin-bottom: 40px; overflow: hidden; }
+        .prov-card { background: var(--surface); border-radius: 16px; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.03); border: 1px solid var(--border); margin-bottom: 40px; overflow: hidden; }
         .prov-header { padding: 20px 25px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; background: linear-gradient(to right, #ffffff, #f8fafc); }
-        .prov-name { font-size: 1.1rem; font-weight: 700; color: var(--text-main); display: flex; align-items: center; gap: 8px; }
-        .prov-badge { background: #dbeafe; color: #1e40af; font-size: 0.7rem; padding: 4px 10px; border-radius: 20px; font-weight: 600; }
-
+        .prov-name { font-size: 1.1rem; font-weight: 700; }
         .data-grid { display: grid; grid-template-columns: 2fr 3fr; border-bottom: 1px solid var(--border); }
         .col-phys { padding: 25px; border-right: 1px solid var(--border); }
-        
-        /* TABLA IZQ */
-        .stat-row { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 0.9rem; }
-        .stat-label { color: var(--text-muted); }
-        .stat-val { font-weight: 600; }
-        .stat-val.bruto { color: var(--text-main); }
-        .stat-val.tara { color: var(--danger); }
-        .stat-val.neto { color: var(--primary); font-size: 1.1rem; font-weight: 800; }
-        .cat-list { margin-top: 20px; background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid var(--border); }
-        .cat-item { display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 0.85rem; }
-        .badge-cat { padding: 2px 6px; border-radius: 4px; color: white; font-weight: 700; font-size: 0.7rem; margin-right: 5px; }
-
-        /* COLUMNA DER */
         .col-fin { padding: 25px; background: #fffbeb; }
-        .sim-header { font-size: 0.85rem; font-weight: 700; color: #b45309; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 0.5px; }
         
+        .stat-row { display: flex; justify-content: space-between; margin-bottom: 10px; font-size: 0.9rem; }
+        .stat-val { font-weight: 600; }
+        .stat-val.neto { color: var(--primary); font-size: 1.1rem; font-weight: 800; }
+
         .sim-controls { display: flex; gap: 15px; margin-bottom: 20px; }
-        .input-wrap { flex: 1; }
         .input-wrap label { display: block; font-size: 0.7rem; font-weight: 700; margin-bottom: 5px; color: #92400e; }
-        .input-wrap input { width: 100%; padding: 10px; border: 1px solid #fcd34d; border-radius: 8px; font-weight: 700; color: #78350f; text-align: center; font-size: 1rem; outline: none; background: white; transition: 0.2s; }
-        .input-wrap input:focus { box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.2); border-color: var(--accent); }
+        .input-wrap input { width: 100%; padding: 10px; border: 1px solid #fcd34d; border-radius: 8px; font-weight: 700; color: #78350f; text-align: center; font-size: 1rem; outline: none; background: white; }
 
         .fin-result { background: white; padding: 20px; border-radius: 12px; border: 1px dashed #fcd34d; }
-        .breakdown-list { margin: 10px 0; font-size: 0.85rem; border-left: 3px solid #e2e8f0; padding-left: 15px; }
-        .breakdown-item { display: flex; justify-content: space-between; margin-bottom: 6px; color: #475569; align-items: center; }
-        
         .res-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.9rem; }
         .res-row.merma { color: var(--danger); font-size: 0.85rem; padding-bottom: 8px; border-bottom: 1px dashed #e2e8f0; margin-bottom: 12px; }
         .res-row.final { margin-top: 15px; padding-top: 15px; border-top: 1px solid #e2e8f0; font-size: 1.2rem; }
         .money { font-family: 'Consolas', monospace; font-weight: 700; }
 
-        /* GALERIA FOTOS */
-        .gallery-strip { padding: 15px 25px; background: #f8fafc; display: flex; gap: 12px; overflow-x: auto; white-space: nowrap; scrollbar-width: thin; }
-        .img-card { display: inline-block; position: relative; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); width: 120px; flex-shrink: 0; transition: transform 0.2s; cursor: zoom-in; }
-        .img-card:hover { transform: translateY(-3px); box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
-        .img-card img { width: 100%; height: 80px; object-fit: cover; display: block; }
-        .img-meta { font-size: 0.65rem; background: rgba(255,255,255,0.9); padding: 4px; text-align: center; font-weight: 600; color: var(--text-muted); }
+        .gallery-strip { padding: 15px 25px; background: #f8fafc; display: flex; gap: 12px; overflow-x: auto; }
+        .img-card img { width: 100%; height: 80px; object-fit: cover; border-radius: 6px; border: 1px solid #ccc; cursor: zoom-in; }
+        .img-card { width: 120px; flex-shrink: 0; text-align: center; font-size: 0.7rem; color: #666; }
 
-        /* MODAL */
+        .expenses-wrapper { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 40px; }
+        .expense-box { background: var(--surface); padding: 25px; border-radius: 16px; border: 1px solid var(--border); }
+        .exp-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed var(--border); font-size: 0.9rem; }
+        .admin-exp input { width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 1.2rem; font-weight: 700; margin-top: 10px; }
+
+        .master-footer { position: fixed; bottom: 0; left: 0; width: 100%; background: #0f172a; color: white; padding: 15px 0; z-index: 100; box-shadow: 0 -5px 20px rgba(0,0,0,0.2); }
+        .footer-grid { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; text-align: center; }
+        .kpi-val { font-size: 1.4rem; font-weight: 800; }
+        .kpi-val.gold { color: var(--accent); font-size: 1.8rem; }
+        .kpi-lbl { font-size: 0.65rem; text-transform: uppercase; color: #94a3b8; display: block; margin-bottom: 4px; }
+        .btn-save-float { background: var(--accent); color: #0f172a; border: none; padding: 10px 25px; border-radius: 50px; font-weight: 800; cursor: pointer; transition: transform 0.2s; font-size: 0.9rem; box-shadow: 0 4px 10px rgba(245, 158, 11, 0.3); }
+        .btn-save-float:hover { transform: scale(1.05); background: #fbbf24; }
+
+        .breakdown-list { margin: 10px 0; font-size: 0.85rem; border-left: 3px solid #e2e8f0; padding-left: 15px; }
+        .breakdown-item { display: flex; justify-content: space-between; margin-bottom: 6px; color: #475569; align-items: center; }
+        .badge-cat { padding: 2px 6px; border-radius: 4px; color: white; font-weight: 700; font-size: 0.7rem; margin-right: 5px; }
+
         .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 2000; display: none; justify-content: center; align-items: center; }
         .modal-overlay.open { display: flex; }
         .modal-content { max-width: 90%; max-height: 90vh; border-radius: 8px; box-shadow: 0 10px 40px rgba(0,0,0,0.5); }
 
-        /* GASTOS */
-        .expenses-wrapper { display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-top: 40px; }
-        .expense-box { background: var(--surface); padding: 25px; border-radius: 16px; border: 1px solid var(--border); }
-        .exp-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed var(--border); font-size: 0.9rem; }
-        .exp-row:last-child { border-bottom: none; }
-        .admin-exp input { width: 100%; padding: 12px; border: 2px solid #e2e8f0; border-radius: 8px; font-size: 1.2rem; font-weight: 700; color: var(--primary-dark); margin-top: 10px; outline: none; transition: 0.2s; }
-        .admin-exp input:focus { border-color: var(--primary); }
-
-        /* FOOTER FLOTANTE */
-        .master-footer { position: fixed; bottom: 0; left: 0; width: 100%; background: #0f172a; color: white; padding: 15px 0; box-shadow: 0 -10px 30px rgba(0,0,0,0.15); z-index: 100; backdrop-filter: blur(10px); }
-        .footer-grid { max-width: 1200px; margin: 0 auto; padding: 0 20px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; align-items: center; }
-        .kpi-item { text-align: center; border-right: 1px solid rgba(255,255,255,0.1); }
-        .kpi-item:last-child { border-right: none; }
-        .kpi-label { display: block; font-size: 0.65rem; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; margin-bottom: 4px; }
-        .kpi-value { font-size: 1.4rem; font-weight: 800; color: white; }
-        .kpi-value.gold { color: var(--accent); font-size: 1.8rem; text-shadow: 0 2px 10px rgba(245, 158, 11, 0.2); }
-        .btn-save-float { background: var(--accent); color: #0f172a; border: none; padding: 10px 25px; border-radius: 50px; font-weight: 800; cursor: pointer; transition: transform 0.2s; font-size: 0.9rem; box-shadow: 0 4px 10px rgba(245, 158, 11, 0.3); }
-        .btn-save-float:hover { transform: scale(1.05); background: #fbbf24; }
-
-        @media(max-width: 900px) { .data-grid, .expenses-wrapper, .footer-grid { grid-template-columns: 1fr; } .col-phys { border-right: none; border-bottom: 1px solid var(--border); } .kpi-item { border-right: none; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center; } .footer-grid { gap: 10px; } }
+        @media(max-width: 900px) { .data-grid, .expenses-wrapper, .footer-grid { grid-template-columns: 1fr; } .col-phys { border-right: none; border-bottom: 1px solid var(--border); } }
     </style>
 </head>
 <body>
@@ -177,7 +137,6 @@ $gastos_fijos = $d['precio_flete'] + $d['subtotal_cosecha'] + $d['subtotal_carga
             $peso_neto_campo = $p['k_cat1'] + $p['k_cat2'] + $p['k_rastrojo'];
             $subtotal_campo = $p['subtotal'];
             
-            // Valores recuperados si existen
             $val_pct = $p['liq_porc'] ?? 0;
             $val_prc = $p['liq_precio_m'] ?? 0;
         ?>
@@ -233,11 +192,8 @@ $gastos_fijos = $d['precio_flete'] + $d['subtotal_cosecha'] + $d['subtotal_carga
                             <span>Pago Merma:</span>
                             <span><span id="lbl_k_merma_<?php echo $idx; ?>">0</span> kg x S/ <span id="lbl_p_merma_<?php echo $idx; ?>">0.00</span> = <strong id="lbl_s_merma_<?php echo $idx; ?>">S/ 0.00</strong></span>
                         </div>
-
                         <div style="font-size:0.8rem; font-weight:700; color:#0f172a; margin-bottom:5px;">Pago Fruta Neta (Útil):</div>
-                        <div class="breakdown-list" id="breakdown_<?php echo $idx; ?>">
-                            </div>
-
+                        <div class="breakdown-list" id="breakdown_<?php echo $idx; ?>"></div>
                         <div class="res-row final">
                             <span style="color:var(--primary-dark); font-weight:800;">TOTAL A PAGAR</span>
                             <strong class="money" style="color:var(--primary); font-size:1.3rem;" id="res_pago_<?php echo $idx; ?>">S/ 0.00</strong>
@@ -286,7 +242,7 @@ $gastos_fijos = $d['precio_flete'] + $d['subtotal_cosecha'] + $d['subtotal_carga
 
     <div class="master-footer">
         <div class="footer-grid">
-            <div><span class="kpi-lbl">Kg Útiles Venta</span><div class="kpi-val" id="lbl_kg_util">0.00</div></div>
+            <div><span class="kpi-lbl">Total Kilos Neto</span><div class="kpi-val" id="lbl_kg_total">0.00</div></div>
             <div><span class="kpi-lbl">Total Pagar</span><div class="kpi-val" id="lbl_pago_prod">S/ 0.00</div></div>
             <div><span class="kpi-lbl">Inversión Total</span><div class="kpi-val" id="lbl_inversion">S/ 0.00</div></div>
             <div style="border:none;"><span class="kpi-lbl" style="color:var(--accent);">COSTO REAL / KG</span><div class="kpi-val gold" id="lbl_costo_kilo">S/ 0.00</div></div>
@@ -305,8 +261,8 @@ function openModal(src) { document.getElementById('modalImg').src = src; documen
 function closeModal() { document.getElementById('imgModal').classList.remove('open'); }
 
 function recalc() {
-    let totalKgUtil = 0;
-    let totalNuevoPagoProd = 0;
+    let totalKgFisico = 0; // Total Kilos Neto Campo (Sin restar merma)
+    let totalNuevoPagoProd = 0; // Dinero con descuento merma
 
     for (let i = 0; i < count; i++) {
         // Base Data
@@ -316,24 +272,27 @@ function recalc() {
         const p2 = parseFloat(document.querySelectorAll('.h-p2')[i].value) || 0;
         const kr = parseFloat(document.querySelectorAll('.h-kr')[i].value) || 0;
         const pr = parseFloat(document.querySelectorAll('.h-pr')[i].value) || 0;
-        const kgTotalOrig = k1 + k2 + kr;
+        const kgTotalOrig = k1 + k2 + kr; // Peso físico real
 
         // Inputs
         const pct = parseFloat(document.getElementById('pct_' + i).value) || 0;
         const pMerma = parseFloat(document.getElementById('prm_' + i).value) || 0;
 
-        // Calcs
+        // Factor Utilidad (100% - Merma%)
         const factorUtil = (100 - pct) / 100;
+
+        // 1. Merma
         const kgMermaTotal = kgTotalOrig * (pct / 100);
         const pagoMerma = kgMermaTotal * pMerma;
 
+        // 2. Desglose Fruta Neta
         let htmlBreakdown = "";
         let pagoNetaTotal = 0;
-        let kgUtilTotal = 0;
+        let kgUtilTotal = 0; // Peso que se paga como "bueno"
 
         const addRow = (label, color, kgOrig, price) => {
-            let kgU = kgOrig * factorUtil;
-            let sub = kgU * price;
+            let kgU = kgOrig * factorUtil; // Kilos útiles de esta categoría
+            let sub = kgU * price; // Subtotal pagado a precio full
             pagoNetaTotal += sub;
             kgUtilTotal += kgU;
             htmlBreakdown += `<div class="breakdown-item">
@@ -356,30 +315,31 @@ function recalc() {
         document.getElementById('breakdown_' + i).innerHTML = htmlBreakdown;
         document.getElementById('res_pago_' + i).innerText = "S/ " + nuevoPago.toLocaleString('en-US', {minimumFractionDigits: 2});
 
-        // HIDDEN INPUTS UPDATE (Para enviar al backend)
+        // HIDDEN INPUTS (Para enviar al backend)
         document.getElementById('inp_kg_merma_' + i).value = kgMermaTotal.toFixed(2);
         document.getElementById('inp_kg_util_' + i).value = kgUtilTotal.toFixed(2);
         document.getElementById('inp_pago_merma_' + i).value = pagoMerma.toFixed(2);
         document.getElementById('inp_pago_util_' + i).value = pagoNetaTotal.toFixed(2);
         document.getElementById('inp_pago_total_' + i).value = nuevoPago.toFixed(2);
 
-        // Accumulate Global
-        totalKgUtil += kgUtilTotal;
-        totalNuevoPagoProd += nuevoPago;
+        // Acumular Globales
+        totalKgFisico += kgTotalOrig; // Sumamos el peso original (el que se vende)
+        totalNuevoPagoProd += nuevoPago; // Sumamos el dinero ajustado
     }
 
     const gastosAdmin = parseFloat(document.getElementById('gastos_admin').value) || 0;
     const inversionTotal = totalNuevoPagoProd + gastosCampo + gastosAdmin;
-    const costoFinalKilo = (totalKgUtil > 0) ? (inversionTotal / totalKgUtil) : 0;
+    // Costo Real = Inversión Total / Kilos Físicos (porque todo se vende)
+    const costoFinalKilo = (totalKgFisico > 0) ? (inversionTotal / totalKgFisico) : 0;
 
     // Footer Updates
-    document.getElementById('lbl_kg_util').innerText = totalKgUtil.toLocaleString('en-US', {minimumFractionDigits: 2});
+    document.getElementById('lbl_kg_total').innerText = totalKgFisico.toLocaleString('en-US', {minimumFractionDigits: 2});
     document.getElementById('lbl_pago_prod').innerText = "S/ " + totalNuevoPagoProd.toLocaleString('en-US', {minimumFractionDigits: 2});
     document.getElementById('lbl_inversion').innerText = "S/ " + inversionTotal.toLocaleString('en-US', {minimumFractionDigits: 2});
     document.getElementById('lbl_costo_kilo').innerText = "S/ " + costoFinalKilo.toFixed(3);
 
-    // Global Hidden Inputs Update
-    document.getElementById('head_kg_total').value = totalKgUtil.toFixed(2);
+    // Global Hidden Inputs Update (Para guardar en cabecera)
+    document.getElementById('head_kg_total').value = totalKgFisico.toFixed(2);
     document.getElementById('head_imp_total').value = totalNuevoPagoProd.toFixed(2);
 }
 
