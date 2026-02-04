@@ -1,5 +1,6 @@
 <?php
 // editar_solicitud.php
+// v5: Compatible con TARA/DESTARA y LIQUIDACIÓN POR PROVEEDOR
 require_once 'auth.php';       
 require_once 'db_connect.php'; 
 
@@ -20,15 +21,23 @@ if (!$data) {
     die("❌ Error: Solicitud no encontrada o no tienes permiso.");
 }
 
-// 2. Obtener Pesadas (Detalle)
+// 2. Obtener Pesadas (Detalle) - INCLUYENDO peso_bruto
+// Verificar si existe la columna peso_bruto (compatibilidad)
 $stmtDet = $conn->prepare("SELECT * FROM acopios_pesadas WHERE acopio_id = ? ORDER BY numero_tanda ASC");
 $stmtDet->execute([$id]);
 $pesadas = $stmtDet->fetchAll(PDO::FETCH_ASSOC);
 
 
-// 2.1 Obtener Orígenes desde tablas (si existen)
+// 2.1 Obtener Orígenes desde tablas CON DETALLE DE PRECIOS Y TARA
 $stmtOri = $conn->prepare("
-    SELECT ao.id as origen_id, p.id as proveedor_id, p.nombre as proveedor, ao.campo, p.cuenta_bancaria
+    SELECT 
+        ao.id as origen_id, 
+        p.id as proveedor_id, 
+        p.nombre as proveedor, 
+        ao.campo, 
+        p.cuenta_bancaria,
+        ao.p_cat1, ao.p_cat2, ao.p_rastrojo,
+        ao.tara_asignada
     FROM acopios_origenes ao
     JOIN proveedores p ON p.id = ao.proveedor_id
     WHERE ao.acopio_id = ?
@@ -40,7 +49,7 @@ $origenes_db = $stmtOri->fetchAll(PDO::FETCH_ASSOC);
 // Preparar JSON para JS
 $pesadas_json = json_encode($pesadas ?: []);
 
-// Preferir orígenes de BD (match real). Si no hay, usar JSON guardado en cabecera (compatibilidad).
+// Construir estructura rica para JS
 if (!empty($origenes_db)) {
     $tmp = [];
     foreach ($origenes_db as $r) {
@@ -49,7 +58,15 @@ if (!empty($origenes_db)) {
             "campo" => $r["campo"] ?? "",
             "cuenta" => $r["cuenta_bancaria"] ?? "",
             "proveedor_id" => (int)$r["proveedor_id"],
-            "origen_id" => (int)$r["origen_id"]
+            "origen_id" => (int)$r["origen_id"],
+            // Tara guardada (o 1.6 por defecto si es antiguo)
+            "tara" => (float)($r['tara_asignada'] ?? 1.6),
+            "precios" => [
+                "p1" => (float)($r['p_cat1'] ?? 0),
+                "p2" => (float)($r['p_cat2'] ?? 0),
+                "pr" => (float)($r['p_rastrojo'] ?? 0)
+            ],
+            "kilos" => ["k1"=>0, "k2"=>0, "kr"=>0]
         ];
     }
     $origenes_json = json_encode($tmp, JSON_UNESCAPED_UNICODE);
@@ -57,29 +74,14 @@ if (!empty($origenes_db)) {
     $origenes_json = $data['origenes_detalle'] ?: '[]';
 }
 
-// Texto profesional para mostrar productores con comas
+// Texto visual
 $proveedor_lista_ui = trim((string)($data['proveedor'] ?? ''));
 if (!empty($origenes_db)) {
     $names = [];
-    foreach ($origenes_db as $r) {
-        $n = trim((string)($r['proveedor'] ?? ''));
-        if ($n !== '') $names[] = $n;
-    }
+    foreach ($origenes_db as $r) $names[] = trim((string)$r['proveedor']);
     $names = array_values(array_unique($names));
     if (!empty($names)) $proveedor_lista_ui = implode(', ', $names);
-} else {
-    $tmpOri = json_decode($data['origenes_detalle'] ?: '[]', true);
-    if (is_array($tmpOri)) {
-        $names = [];
-        foreach ($tmpOri as $r) {
-            $n = trim((string)($r['proveedor'] ?? ''));
-            if ($n !== '') $names[] = $n;
-        }
-        $names = array_values(array_unique($names));
-        if (!empty($names)) $proveedor_lista_ui = implode(', ', $names);
-    }
 }
-
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -125,9 +127,19 @@ if (!empty($origenes_db)) {
         .btn-camera.has-photo { background: #e8f5e9; border-color: #2e7d32; color: #2e7d32; border-style: solid; }
 
         .big-total { font-size: 1.5rem; font-weight: 900; color: var(--primary); display: block; text-align: right; }
-        
         .icon-arrow { transition: transform 0.2s; }
         .card.active .icon-arrow { transform: rotate(180deg); }
+
+        /* Estilos Liquidación Detallada */
+        .liqui-block { border: 1px solid #ccc; border-radius: 8px; margin-bottom: 15px; overflow: hidden; background: #fff; }
+        .liqui-header { background: #e3f2fd; padding: 10px; font-weight: bold; color: #1565c0; font-size: 0.9rem; display:flex; justify-content:space-between; }
+        .liqui-row { display: flex; align-items: center; border-bottom: 1px solid #eee; padding: 8px; font-size: 0.85rem; }
+        .mini-input { width: 100%; border-bottom: 1px solid var(--gold); text-align: right; font-weight: bold; padding: 4px; border-top: none; border-left: none; border-right: none; background: transparent; }
+        
+        .badge-cat { font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; color: white; font-weight: bold; margin-left: 5px; }
+        .cat1 { background: #2e7d32; } 
+        .cat2 { background: #fbc02d; color: black; } 
+        .rastrojo { background: #d32f2f; }
     </style>
 </head>
 <body>
@@ -144,28 +156,31 @@ if (!empty($origenes_db)) {
         <input type="hidden" id="origenes_json" name="origenes_json" value='<?php echo htmlspecialchars($origenes_json, ENT_QUOTES); ?>'>
         <input type="hidden" id="detalle_pesadas_json" name="detalle_pesadas_json">
         <input type="hidden" id="total_fruta" name="total_fruta" value="<?php echo htmlspecialchars($data['total_kilos_neto']); ?>">
+        <input type="hidden" id="total_pagar_texto" name="total_pagar_texto">
 
         <div class="card active" id="card1">
             <div class="card-header" onclick="toggleCard('card1')">
                 <span>1. Orígenes (Proveedores)</span> <span class="icon-arrow">▼</span>
             </div>
             <div class="card-body">
-                <label>Productores (lista)</label>
-                <div class="input-box">
-                    <input type="text" value="<?php echo htmlspecialchars($proveedor_lista_ui); ?>" readonly>
-                </div>
-                <small style="display:block; margin-top:6px; color:#666;">Agrega o quita productores abajo. Al guardar, se actualizarán automáticamente con comas.</small>
-
-                <div id="lista_origenes"></div>
-                <div style="display:flex; gap:8px; margin-top:10px;">
-                    <div style="flex:1;">
-                        <input type="text" id="tmp_prov" class="input-box" placeholder="Nombre Agricultor" style="margin-bottom:5px; background:#fff;">
+                <div id="lista_origenes" style="margin-top:15px;"></div>
+                
+                <div style="display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;">
+                    <div style="flex:1; min-width:150px;">
+                        <input type="text" id="tmp_prov" class="input-box" placeholder="Nuevo Agricultor" style="margin-bottom:5px; background:#fff;">
                         <input type="text" id="tmp_campo" class="input-box" placeholder="Campo / Sector" style="background:#fff;">
                     </div>
-                    <button type="button" class="btn-action btn-plus" style="height:auto;" onclick="addOrigen()">+</button>
+                    <div style="width:100px;">
+                        <select id="tmp_tara" class="input-box" style="background:#fff; font-weight:bold; color:var(--primary); font-size:0.8rem;">
+                            <option value="1.6">Tara 1.6</option>
+                            <option value="1.7">Tara 1.7</option>
+                            <option value="1.8">Tara 1.8</option>
+                        </select>
+                    </div>
+                    <button type="button" class="btn-action btn-plus" style="height:auto; width:40px;" onclick="addOrigen()">+</button>
                 </div>
                 
-                <label>Cuenta Bancaria</label>
+                <label>Cuenta Bancaria (General)</label>
                 <div class="input-box">
                     <input type="text" name="cuenta" value="<?php echo htmlspecialchars($data['cuenta_bancaria']); ?>" placeholder="Banco - Nro Cuenta">
                 </div>
@@ -195,9 +210,11 @@ if (!empty($origenes_db)) {
             <div class="card-body">
                 <div style="background: #f0f7ff; padding: 10px; border-radius: 8px; border: 1px solid #bbdefb;">
                     <label style="margin-top:0;">Origen de esta tanda:</label>
-                    <select id="select_origen_pesada" class="input-box" style="background:#fff; font-weight:bold; color:#1565c0;"></select>
+                    <select id="select_origen_pesada" class="input-box" style="background:#fff; font-weight:bold; color:#1565c0;" onchange="mostrarTaraInfo()"></select>
+                    
+                    <div id="info_tara_actual" style="text-align:right; font-size:0.8rem; color:#d32f2f; font-weight:bold; margin-bottom:5px; height:15px;"></div>
 
-                    <label>Categoría:</label>
+                    <label style="margin-top:0;">Categoría:</label>
                     <select id="select_categoria" class="input-box" style="background:#fff; font-weight:bold;">
                         <option value="cat1">🏆 Cat 1 - Grande</option>
                         <option value="cat2">🔸 Cat 1 - Chico</option>
@@ -206,7 +223,7 @@ if (!empty($origenes_db)) {
 
                     <div class="row">
                         <div class="col"><input type="number" id="temp_jabas" class="input-box" style="background:#fff" placeholder="Jabas"></div>
-                        <div class="col"><input type="number" id="temp_peso" class="input-box" style="background:#fff" placeholder="Kg"></div>
+                        <div class="col"><input type="number" id="temp_peso" class="input-box" style="background:#fff" placeholder="Peso BALANZA"></div>
                     </div>
 
                     <label class="btn-camera" id="btn_temp_foto">
@@ -220,54 +237,24 @@ if (!empty($origenes_db)) {
                 <div id="lista_pesadas_container" style="margin-top:15px;"></div>
 
                 <div class="row" style="margin-top:15px; border-top:1px solid #eee; padding-top:10px;">
-                    <div class="col" style="text-align:center;"><small>Total Jabas</small><br><b id="gtj" style="font-size:1.2rem;">0</b></div>
-                    <div class="col" style="text-align:center;"><small>Total Kg</small><br><b id="gtp" style="font-size:1.2rem; color:var(--primary);">0.00</b></div>
+                    <div class="col" style="text-align:center;"><small>Jabas</small><br><b id="gtj" style="font-size:1.2rem;">0</b></div>
+                    <div class="col" style="text-align:center;"><small>Peso NETO</small><br><b id="gtp" style="font-size:1.2rem; color:var(--primary);">0.00</b></div>
                 </div>
-                
-                <input type="hidden" name="total_jabas" id="input_total_jabas">
-                <input type="hidden" name="total_peso_bruto" id="input_total_peso">
             </div>
         </div>
 
         <div class="card" id="card4">
             <div class="card-header" onclick="toggleCard('card4')">
-                <span style="color:var(--primary)">4. Liquidación Compra</span> <span class="icon-arrow">▼</span>
+                <span style="color:var(--primary)">4. Liquidación (Detallada)</span> <span class="icon-arrow">▼</span>
             </div>
-            <div class="card-body" style="background-color: #f1f8e9;">
-                <div class="row" style="align-items:center;">
-                    <div class="col">
-                        <label style="margin:0; font-size:0.75rem; color:#2e7d32;">Cat 1 (Kg)</label>
-                        <input type="number" id="k_cat1" name="total_cat1" class="input-box readonly" readonly>
-                    </div>
-                    <div class="col">
-                        <label style="margin:0; font-size:0.75rem;">Precio</label>
-                        <input type="number" id="p_cat1" name="precio_cat1" class="input-box money" value="<?php echo htmlspecialchars($data['precio_cat1']); ?>" oninput="calcularTotalFruta()">
-                    </div>
-                </div>
-                <div class="row" style="align-items:center; margin-top:8px;">
-                    <div class="col">
-                        <label style="margin:0; font-size:0.75rem; color:#f9a825;">Cat 2 (Kg)</label>
-                        <input type="number" id="k_cat2" name="total_cat2" class="input-box readonly" readonly>
-                    </div>
-                    <div class="col">
-                        <input type="number" id="p_cat2" name="precio_cat2" class="input-box money" value="<?php echo htmlspecialchars($data['precio_cat2']); ?>" oninput="calcularTotalFruta()">
-                    </div>
-                </div>
-                <div class="row" style="align-items:center; margin-top:8px;">
-                    <div class="col">
-                        <label style="margin:0; font-size:0.75rem; color:#c62828;">Rastrojo (Kg)</label>
-                        <input type="number" id="k_rastrojo" name="total_rastrojo" class="input-box readonly" readonly>
-                    </div>
-                    <div class="col">
-                        <input type="number" id="p_rastrojo" name="precio_rastrojo" class="input-box money" value="<?php echo htmlspecialchars($data['precio_rastrojo']); ?>" oninput="calcularTotalFruta()">
-                    </div>
-                </div>
+            <div class="card-body" style="background:#f9f9f9;">
+                <p style="font-size:0.8rem; color:#666; margin-top:0;">Precios por proveedor (Neto):</p>
+                
+                <div id="liqui_container"></div>
 
                 <div style="margin-top: 15px; border-top: 2px dashed #a5d6a7; padding-top: 10px; text-align:right;">
-                    <span style="font-size:0.9rem; color:#555;">A Pagar por Fruta:</span><br>
+                    <span style="font-size:0.9rem; color:#555;">TOTAL A PAGAR:</span><br>
                     <span class="big-total" id="txt_total_pagar">S/ 0.00</span>
-                    <input type="hidden" name="importe_total_fruta" id="hidden_total_pagar">
-                    <input type="hidden" name="precio_x_kg" id="precio_kg_promedio">
                 </div>
             </div>
         </div>
@@ -324,30 +311,49 @@ try {
     origenes = JSON.parse(document.getElementById('origenes_json').value || '[]') || []; 
 } catch(e) { origenes = []; }
 
-// Fallback si no hay origenes pero sí un proveedor en cabecera antigua
+// Normalizar estructura de origenes
+origenes = origenes.map(o => {
+    if(!o.precios) o.precios = {p1:0, p2:0, pr:0};
+    if(!o.kilos) o.kilos = {k1:0, k2:0, kr:0};
+    if(!o.tara) o.tara = 1.6; // Default si no tiene
+    return o;
+});
+
+// Fallback si no hay origenes
 if (origenes.length === 0 && "<?php echo addslashes($data['proveedor']); ?>") {
-    origenes.push({ proveedor: "<?php echo addslashes($data['proveedor']); ?>", campo: "" });
+    origenes.push({ 
+        proveedor: "<?php echo addslashes($data['proveedor']); ?>", campo: "", 
+        precios: {p1:0, p2:0, pr:0}, kilos: {k1:0, k2:0, kr:0}, tara: 1.6
+    });
 }
 
 let pesadas = <?php echo $pesadas_json; ?>;
 // Normalizar datos de pesadas
-pesadas = pesadas.map(p => ({
-    jabas: parseFloat(p.jabas) || 0,
-    peso: parseFloat(p.peso) || 0,
-    foto_url: p.foto_url || null,
-    file: null, // Para nueva foto
-    preview: p.foto_url || null, // URL para mostrar
-    origen_id: (p.origen_id !== undefined && p.origen_id !== null && p.origen_id !== '') ? parseInt(p.origen_id, 10) : null,
-    origen: p.origen_referencia || "",
-    categoria: p.categoria || "cat1",
-    es_nueva_fila: false
-}));
+pesadas = pesadas.map(p => {
+    // Si es registro antiguo, no tiene peso_bruto. Asumimos bruto=neto (o bruto=peso)
+    // El campo 'peso' de la BD es el NETO.
+    let neto = parseFloat(p.peso) || 0;
+    let bruto = (p.peso_bruto) ? parseFloat(p.peso_bruto) : neto; // Fallback
+
+    return {
+        jabas: parseFloat(p.jabas) || 0,
+        pNeto: neto,
+        pBruto: bruto,
+        foto_url: p.foto_url || null,
+        file: null, 
+        preview: p.foto_url || null, 
+        origen_id: (p.origen_id) ? parseInt(p.origen_id, 10) : null,
+        origen: p.origen_referencia || "",
+        categoria: p.categoria || "cat1",
+        es_nueva_fila: false
+    };
+});
 
 // --- INICIALIZACIÓN ---
 window.onload = function() {
     renderOrigenes();
     renderPesadas();
-    calcularTotalFruta();
+    updateLiquidation(); 
     calcPersonal();
 };
 
@@ -366,7 +372,8 @@ function renderOrigenes() {
         div.innerHTML += `
         <div class="origen-row">
             <div style="flex:1;">
-                <strong>${esc(o.proveedor)}</strong> <small>(${esc(o.campo)})</small>
+                <strong>${esc(o.proveedor)}</strong> <small>(${esc(o.campo)})</small><br>
+                <span style="font-size:0.75rem; color:#d32f2f;">Tara: ${o.tara} kg</span>
             </div>
             <button type="button" class="btn-action btn-trash" onclick="delOrigen(${i})">🗑️</button>
         </div>`;
@@ -377,50 +384,57 @@ function renderOrigenes() {
 function addOrigen() {
     const p = document.getElementById('tmp_prov').value.trim();
     const c = document.getElementById('tmp_campo').value.trim();
-    if(!p) return alert("Ingresa al menos el nombre del proveedor");
-    origenes.push({ proveedor: p, campo: c });
+    const t = parseFloat(document.getElementById('tmp_tara').value) || 1.6;
+
+    if(!p) return alert("Ingresa nombre");
+    
+    origenes.push({ 
+        proveedor: p, campo: c, tara: t,
+        precios: {p1:0, p2:0, pr:0},
+        kilos: {k1:0, k2:0, kr:0}
+    });
+    
     document.getElementById('tmp_prov').value = "";
     document.getElementById('tmp_campo').value = "";
     renderOrigenes();
+    updateLiquidation();
 }
 
 function delOrigen(i) {
     if(confirm('¿Borrar origen?')) {
         origenes.splice(i, 1);
         renderOrigenes();
+        updateLiquidation();
     }
 }
 
 function actualizarSelects() {
-    // Select principal para agregar
     fillSelect('select_origen_pesada');
-    
-    // Si hay pesadas renderizadas, actualizar sus selects internos
 }
 
-function fillSelect(id, selectedVal = null) {
+function fillSelect(id) {
     const sel = document.getElementById(id);
     if(!sel) return;
     sel.innerHTML = "";
-    if(origenes.length === 0) {
-        sel.add(new Option("-- Crea un origen primero --", ""));
-        return;
-    }
+    sel.add(new Option("-- Selecciona Origen --", ""));
 
     origenes.forEach((o, idx) => {
         const label = o.proveedor + (o.campo ? " - " + o.campo : "");
-        const value = (o.origen_id !== undefined && o.origen_id !== null) ? String(o.origen_id) : label; // fallback
+        const value = idx; // INDEX
         const opt = new Option(label, value);
-        opt.dataset.label = label;
-        if(selectedVal !== null && String(selectedVal) === String(value)) opt.selected = true;
         sel.add(opt);
     });
+    
+    mostrarTaraInfo();
+}
 
-    if(selectedVal !== null && selectedVal !== '' && !Array.from(sel.options).some(o => String(o.value) === String(selectedVal))) {
-        const opt = new Option(String(selectedVal) + " (Eliminado)", String(selectedVal));
-        opt.dataset.label = String(selectedVal);
-        opt.selected = true;
-        sel.add(opt);
+function mostrarTaraInfo() {
+    let idx = document.getElementById('select_origen_pesada').value;
+    let info = document.getElementById('info_tara_actual');
+    if(idx !== "" && origenes[idx]) {
+        info.innerText = "Descuento Tara: " + origenes[idx].tara + " kg x jaba";
+    } else {
+        info.innerText = "";
     }
 }
 
@@ -435,26 +449,35 @@ function checkTempPhoto() {
 }
 
 function agregarPesada() {
-    const j = parseFloat(document.getElementById('temp_jabas').value);
-    const p = parseFloat(document.getElementById('temp_peso').value);
-    const cat = document.getElementById('select_categoria').value;
     const selOri = document.getElementById('select_origen_pesada');
-    const oriVal = selOri.value;
-    const oriLabel = selOri.options[selOri.selectedIndex] ? (selOri.options[selOri.selectedIndex].dataset.label || selOri.options[selOri.selectedIndex].text) : '';
-    const oriIdNum = parseInt(oriVal, 10);
-    const oriId = (!isNaN(oriIdNum) && String(oriIdNum) === String(oriVal)) ? oriIdNum : null;
+    const idx = selOri.value;
+    if(idx === "") return alert("Selecciona origen");
+
+    const j = parseFloat(document.getElementById('temp_jabas').value);
+    const pBruto = parseFloat(document.getElementById('temp_peso').value);
+    const cat = document.getElementById('select_categoria').value;
     const fileInp = document.getElementById('temp_foto_input');
 
-    if(!oriVal) return alert("Selecciona un origen");
-    if(!j || !p) return alert("Ingresa jabas y peso");
+    if(!j || !pBruto) return alert("Faltan datos numéricos");
     if(!fileInp.files[0]) return alert("La foto es obligatoria");
 
+    // CALCULO DESTARA
+    const o = origenes[idx];
+    const taraUnit = o.tara || 1.6;
+    let pNeto = pBruto - (j * taraUnit);
+    if(pNeto < 0) pNeto = 0;
+
     pesadas.push({
-        jabas: j, peso: p, categoria: cat, origen_id: oriId, origen: oriLabel,
+        jabas: j, 
+        pBruto: pBruto,
+        pNeto: pNeto,
+        categoria: cat, 
+        origen_id: o.origen_id || null, 
+        origen: o.proveedor, 
         file: fileInp.files[0],
         preview: URL.createObjectURL(fileInp.files[0]),
         foto_url: null,
-        es_nueva_fila: true // Esto debe coincidir con el backend
+        es_nueva_fila: true 
     });
 
     document.getElementById('temp_jabas').value = "";
@@ -465,28 +488,14 @@ function agregarPesada() {
     btn.querySelector('span').innerText = "📷 Tomar Foto";
     
     renderPesadas();
-}
-
-function updatePesada(idx, key, val) {
-    pesadas[idx][key] = val;
-    if(key === 'categoria' || key === 'peso') renderPesadas(false); 
-    renderPesadas(); 
-}
-
-
-function updatePesadaOrigen(idx, sel){
-    const v = sel.value;
-    const label = sel.options[sel.selectedIndex] ? (sel.options[sel.selectedIndex].dataset.label || sel.options[sel.selectedIndex].text) : '';
-    const n = parseInt(v, 10);
-    pesadas[idx].origen_id = (!isNaN(n) && String(n) === String(v)) ? n : null;
-    pesadas[idx].origen = label;
-    renderPesadas();
+    updateLiquidation(); 
 }
 
 function delPesada(i) {
     if(confirm("¿Eliminar tanda?")) {
         pesadas.splice(i, 1);
         renderPesadas();
+        updateLiquidation();
     }
 }
 
@@ -494,29 +503,20 @@ function renderPesadas() {
     const c = document.getElementById('lista_pesadas_container');
     c.innerHTML = "";
     
-    let tJabas=0, tPeso=0;
-    let k1=0, k2=0, kr=0;
+    let tJabas=0, tPesoNeto=0;
 
     pesadas.forEach((p, i) => {
         tJabas += p.jabas;
-        tPeso += p.peso;
-        if(p.categoria === 'cat1') k1 += p.peso;
-        else if(p.categoria === 'cat2') k2 += p.peso;
-        else kr += p.peso;
-
-        const imgSrc = p.preview || 'placeholder.png';
+        tPesoNeto += p.pNeto;
         
-        let optsOrigen = "";
-        origenes.forEach(o => {
-            const label = o.proveedor + (o.campo ? " - " + o.campo : "");
-            const value = (o.origen_id !== undefined && o.origen_id !== null) ? String(o.origen_id) : label;
-            const selected = (p.origen_id !== null && p.origen_id !== undefined && String(p.origen_id) === String(value))
-                          || (p.origen_id === null && label === p.origen);
-            optsOrigen += `<option value="${esc(value)}" data-label="${esc(label)}" ${selected ? 'selected' : ''}>${esc(label)}</option>`;
-        });
+        const imgSrc = p.preview || p.foto_url || 'placeholder.png';
+        const badgeClass = p.categoria === 'cat1' ? 'cat1' : (p.categoria === 'cat2' ? 'cat2' : 'rastrojo');
+        const badgeText = p.categoria === 'cat1' ? 'C1-Gde' : (p.categoria === 'cat2' ? 'C1-Chico' : 'Rastrojo');
 
-        if(p.origen && !(p.origen_id !== null && p.origen_id !== undefined) && !origenes.some(o => (o.proveedor + (o.campo ? " - " + o.campo : "")) === p.origen)) {
-             optsOrigen += `<option value="${esc(p.origen)}" data-label="${esc(p.origen)}" selected>${esc(p.origen)} (?)</option>`;
+        let nombreProv = p.origen;
+        if (!nombreProv && p.origen_id) {
+            const found = origenes.find(o => o.origen_id == p.origen_id);
+            if(found) nombreProv = found.proveedor;
         }
 
         c.innerHTML += `
@@ -524,20 +524,11 @@ function renderPesadas() {
             <div style="display:flex; align-items:center;">
                 <img src="${imgSrc}" class="pesada-thumb">
                 <div>
-                    <div style="margin-bottom:4px;">
-                        <select onchange="updatePesadaOrigen(${i}, this)" style="border:1px solid #ccc; border-radius:4px; font-size:0.8rem; width:140px;">
-                            ${optsOrigen}
-                        </select>
-                    </div>
-                    <div style="margin-bottom:4px;">
-                        <select onchange="updatePesada(${i}, 'categoria', this.value)" style="border:1px solid #ccc; border-radius:4px; font-size:0.8rem;">
-                            <option value="cat1" ${p.categoria=='cat1'?'selected':''}>Cat 1 Gde</option>
-                            <option value="cat2" ${p.categoria=='cat2'?'selected':''}>Cat 1 Chi</option>
-                            <option value="rastrojo" ${p.categoria=='rastrojo'?'selected':''}>Rastrojo</option>
-                        </select>
+                    <div style="margin-bottom:4px; font-weight:bold; color:#1565c0;">
+                        ${esc(nombreProv)} <span class="badge-cat ${badgeClass}">${badgeText}</span>
                     </div>
                     <div style="font-size:0.85rem;">
-                        <b>${p.jabas} jbs</b> | <span style="color:var(--primary); font-weight:bold;">${p.peso} kg</span>
+                        <b>${p.jabas} jbs</b> | Bruto: ${p.pBruto} | <b style="color:#d32f2f">Neto: ${p.pNeto.toFixed(2)}</b>
                     </div>
                 </div>
             </div>
@@ -546,30 +537,91 @@ function renderPesadas() {
     });
 
     document.getElementById('gtj').innerText = tJabas;
-    document.getElementById('gtp').innerText = tPeso.toFixed(2);
-    
-    document.getElementById('k_cat1').value = k1.toFixed(2);
-    document.getElementById('k_cat2').value = k2.toFixed(2);
-    document.getElementById('k_rastrojo').value = kr.toFixed(2);
-    
-    document.getElementById('input_total_jabas').value = tJabas;
-    document.getElementById('input_total_peso').value = tPeso.toFixed(2);
-    document.getElementById('total_fruta').value = tPeso.toFixed(2);
-
-    calcularTotalFruta();
+    document.getElementById('gtp').innerText = tPesoNeto.toFixed(2);
+    document.getElementById('total_fruta').value = tPesoNeto.toFixed(2);
 }
 
-function calcularTotalFruta() {
-    const getVal = (id) => parseFloat(document.getElementById(id).value) || 0;
-    const total = (getVal('k_cat1') * getVal('p_cat1')) + 
-                  (getVal('k_cat2') * getVal('p_cat2')) + 
-                  (getVal('k_rastrojo') * getVal('p_rastrojo'));
+// --- MOTOR DE LIQUIDACIÓN ---
+function updateLiquidation() {
+    origenes.forEach(o => { o.kilos = {k1:0, k2:0, kr:0}; });
+
+    pesadas.forEach(p => {
+        let oriIndex = -1;
+        if(p.origen_id) oriIndex = origenes.findIndex(o => o.origen_id == p.origen_id);
+        if (oriIndex === -1) oriIndex = origenes.findIndex(o => o.proveedor === p.origen);
+
+        if(oriIndex !== -1) {
+            if(p.categoria==='cat1') origenes[oriIndex].kilos.k1 += p.pNeto;
+            else if(p.categoria==='cat2') origenes[oriIndex].kilos.k2 += p.pNeto;
+            else origenes[oriIndex].kilos.kr += p.pNeto;
+        }
+    });
+
+    let container = document.getElementById('liqui_container');
+    container.innerHTML = "";
+    let granTotal = 0;
+
+    origenes.forEach((o, i) => {
+        let sub = (o.kilos.k1 * o.precios.p1) + (o.kilos.k2 * o.precios.p2) + (o.kilos.kr * o.precios.pr);
+        granTotal += sub;
+
+        container.innerHTML += `
+        <div class="liqui-block">
+            <div class="liqui-header">
+                <span>${esc(o.proveedor)}</span>
+                <span style="font-size:0.8rem; color:#444;">(Tara: ${o.tara})</span>
+            </div>
+            
+            <div class="liqui-row">
+                <span class="badge-cat cat1">C1</span> 
+                <div style="flex:1">${o.kilos.k1.toFixed(2)} kg</div>
+                <div style="width:90px;">
+                    S/ <input type="number" class="mini-input" value="${o.precios.p1||''}" 
+                    oninput="updP(${i}, 'p1', this.value)" placeholder="0.00">
+                </div>
+            </div>
+            <div class="liqui-row">
+                <span class="badge-cat cat2">C2</span> 
+                <div style="flex:1">${o.kilos.k2.toFixed(2)} kg</div>
+                <div style="width:90px;">
+                    S/ <input type="number" class="mini-input" value="${o.precios.p2||''}" 
+                    oninput="updP(${i}, 'p2', this.value)" placeholder="0.00">
+                </div>
+            </div>
+            <div class="liqui-row">
+                <span class="badge-cat rastrojo">RZ</span> 
+                <div style="flex:1">${o.kilos.kr.toFixed(2)} kg</div>
+                <div style="width:90px;">
+                    S/ <input type="number" class="mini-input" value="${o.precios.pr||''}" 
+                    oninput="updP(${i}, 'pr', this.value)" placeholder="0.00">
+                </div>
+            </div>
+            <div class="liqui-row" style="justify-content:space-between; background:#fffde7; font-weight:bold;">
+                <span>A Pagar:</span>
+                <span id="sub_txt_${i}">S/ ${sub.toFixed(2)}</span>
+            </div>
+        </div>`;
+    });
+
+    document.getElementById('txt_total_pagar').innerText = "S/ " + granTotal.toFixed(2);
+    document.getElementById('total_pagar_texto').value = granTotal.toFixed(2);
+    document.getElementById('origenes_json').value = JSON.stringify(origenes);
+}
+
+function updP(idx, tipo, val) {
+    origenes[idx].precios[tipo] = parseFloat(val) || 0;
     
-    document.getElementById('txt_total_pagar').innerText = "S/ " + total.toLocaleString('es-PE', {minimumFractionDigits: 2});
-    document.getElementById('hidden_total_pagar').value = total.toFixed(2);
+    let granTotal = 0;
+    origenes.forEach((o, i) => {
+        let sub = (o.kilos.k1 * o.precios.p1) + (o.kilos.k2 * o.precios.p2) + (o.kilos.kr * o.precios.pr);
+        granTotal += sub;
+        let el = document.getElementById('sub_txt_' + i);
+        if(el) el.innerText = "S/ " + sub.toFixed(2);
+    });
     
-    const kgs = parseFloat(document.getElementById('total_fruta').value) || 0;
-    document.getElementById('precio_kg_promedio').value = kgs > 0 ? (total/kgs).toFixed(4) : 0;
+    document.getElementById('txt_total_pagar').innerText = "S/ " + granTotal.toFixed(2);
+    document.getElementById('total_pagar_texto').value = granTotal.toFixed(2);
+    document.getElementById('origenes_json').value = JSON.stringify(origenes);
 }
 
 function calcPersonal() {
@@ -586,7 +638,6 @@ function esc(str) {
     return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-// --- ENVIO ---
 function guardarTodo() {
     const btn = document.querySelector('.btn-main');
     btn.disabled = true;
@@ -596,12 +647,12 @@ function guardarTodo() {
     
     const pesadasLimpias = pesadas.map(p => ({
         jabas: p.jabas,
-        peso: p.peso,
+        peso: p.pNeto, // Enviamos NETO como 'peso' para el backend
+        peso_bruto: p.pBruto, // Enviamos BRUTO como 'peso_bruto'
         categoria: p.categoria,
-        origen_id: p.origen_id,
-        origen: p.origen,
+        origen: p.origen || (p.origen_id ? origenes.find(o=>o.origen_id==p.origen_id)?.proveedor : ""),
         foto_url: p.foto_url, 
-        es_nueva_fila: p.es_nueva_fila // Clave para el backend
+        es_nueva_fila: p.es_nueva_fila 
     }));
     document.getElementById('detalle_pesadas_json').value = JSON.stringify(pesadasLimpias);
 

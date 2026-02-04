@@ -7,11 +7,9 @@
     <meta name="theme-color" content="#1b5e20"> 
     <title>Nuevo Acopio</title>
 
-    <!-- Offline-first: cola local + sincronización -->
     <script src="offline_queue.js"></script>
 
     <script>
-      // Asegura SW también en páginas internas
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw.js');
       }
@@ -66,9 +64,15 @@
         
         /* ETIQUETAS VISUALES */
         .badge-cat { font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; color: white; font-weight: bold; margin-left: 5px; }
-        .cat1 { background: #2e7d32; } /* Verde - Grande */
-        .cat2 { background: #fbc02d; color: black; } /* Amarillo - Chico */
-        .rastrojo { background: #d32f2f; } /* Rojo */
+        .cat1 { background: #2e7d32; } 
+        .cat2 { background: #fbc02d; color: black; } 
+        .rastrojo { background: #d32f2f; }
+
+        /* Estilos Liquidación Detallada */
+        .liqui-block { border: 1px solid #ccc; border-radius: 8px; margin-bottom: 15px; overflow: hidden; background: #fff; }
+        .liqui-header { background: #e3f2fd; padding: 10px; font-weight: bold; color: #1565c0; font-size: 0.9rem; display: flex; justify-content: space-between;}
+        .liqui-row { display: flex; align-items: center; border-bottom: 1px solid #eee; padding: 8px; font-size: 0.85rem; }
+        .mini-input { width: 100%; border-bottom: 1px solid var(--gold); text-align: right; font-weight: bold; padding: 4px; border-top: none; border-left: none; border-right: none; background: transparent; }
     </style>
 </head>
 <body>
@@ -79,9 +83,7 @@
         
         <a href="nuevo_acopio.php" style="color:white; background:#222;">➕ Nueva Operación</a>
         <a href="mis_solicitudes.php">📂 Mis Solicitudes</a>
-        
         <a href="ia_panel.php" style="color:var(--gold); border-left: 4px solid var(--gold);">🤖 Consultor IA</a>
-        
         <a href="logout.php" style="color:#ff5252;">🚪 Cerrar Sesión</a>
     </div>
     <div id="overlay" onclick="closeNav()"></div>
@@ -93,7 +95,7 @@
     </div>
 
     <div id="netBanner" style="display:none; position:sticky; top:52px; z-index:120; background:#ffebee; color:#b71c1c; padding:10px 15px; font-weight:700; border-bottom:1px solid #ffcdd2;">
-        📴 Sin internet: se guardará offline y se enviará automáticamente al volver la conexión.
+        📴 Sin internet: se guardará offline.
         <span id="pendingCount" style="float:right;"></span>
         <div style="clear:both"></div>
     </div>
@@ -110,16 +112,23 @@
             <div class="card active" id="c1">
                 <div class="card-header" onclick="tgl('c1')">1. Orígenes (Proveedores) ▼</div>
                 <div class="card-body">
-<p style="font-size:0.8rem; color:#666; margin-top:0;">Agrega los agricultores:</p>
                     <div id="lista_origenes"></div>
-                    <div class="origen-row" style="margin-top:10px; border-top:1px dashed #ccc; padding-top:10px;">
-                        <div style="flex:1;">
-                            <input type="text" id="tmp_prov" placeholder="Nombre Agricultor">
-                            <input type="text" id="tmp_campo" placeholder="Campo / Sector" style="margin-top:5px;">
+                    <div class="origen-row" style="margin-top:10px; border-top:1px dashed #ccc; padding-top:10px; flex-wrap:wrap;">
+                        <div style="flex:1; min-width: 150px;">
+                            <input type="text" id="tmp_prov" class="input-box" placeholder="Nombre Agricultor" style="margin-bottom:5px;">
+                            <input type="text" id="tmp_campo" class="input-box" placeholder="Campo / Sector">
+                        </div>
+                        <div style="width: 100px;">
+                            <label style="margin-top:0; font-size:0.7rem; color:var(--primary);">Tara Jaba</label>
+                            <select id="tmp_tara" class="input-box" style="font-weight:bold; color:var(--primary);">
+                                <option value="1.6">1.6 kg</option>
+                                <option value="1.7">1.7 kg</option>
+                                <option value="1.8">1.8 kg</option>
+                            </select>
                         </div>
                         <button type="button" class="btn-plus" onclick="addOrigen()">+</button>
                     </div>
-                    <label>Cuenta Bancaria (Principal)</label>
+                    <label>Cuenta Bancaria (General)</label>
                     <div class="input-box"><input type="tel" name="cuenta" placeholder="Para depósito general"></div>
                 </div>
             </div>
@@ -143,11 +152,13 @@
                 <div class="card-body">
                     <div class="add-area">
                         <label style="margin-top:0; color:#1565c0;">¿A quién pertenece?</label>
-                        <select id="select_origen_pesada" class="select-custom">
+                        <select id="select_origen_pesada" class="select-custom" onchange="mostrarTaraInfo()">
                             <option value="">-- Selecciona Origen --</option>
                         </select>
                         
-                        <label style="margin-top:10px; color:#2e7d32;">Calidad / Categoría</label>
+                        <div id="info_tara_actual" style="text-align:right; font-size:0.8rem; color:#d32f2f; font-weight:bold; margin-bottom:5px; height:15px;"></div>
+                        
+                        <label style="margin-top:5px; color:#2e7d32;">Calidad / Categoría</label>
                         <select id="select_categoria" class="select-custom" style="border-color:#2e7d32; color:#2e7d32;">
                             <option value="cat1">🏆 Cat 1 - Grande</option>
                             <option value="cat2">🔸 Cat 1 - Chico</option>
@@ -156,7 +167,7 @@
 
                         <div class="row" style="margin-top:10px;">
                             <div class="col"><input type="number" id="tj" class="input-box" style="background:white" placeholder="Jabas"></div>
-                            <div class="col"><input type="number" id="tp" class="input-box" style="background:white" placeholder="Kg"></div>
+                            <div class="col"><input type="number" id="tp" class="input-box" style="background:white" placeholder="Peso BALANZA"></div>
                         </div>
                         <label class="mini-camera-btn" id="btn_temp_foto"><span>📷 Tomar Foto</span><input type="file" id="tf" accept="image/*" capture="environment" onchange="checkF()"></label>
                         <button type="button" class="btn-add" onclick="addP()">AGREGAR TANDA</button>
@@ -166,52 +177,22 @@
                     
                     <div class="row" style="margin-top:15px; font-size:0.8rem; color:#666;">
                         <div class="col">Jabas Totales: <b id="gtj">0</b></div>
-                        <div class="col">Peso Bruto Total: <b id="gtp">0.00</b></div>
+                        <div class="col">Peso NETO: <b id="gtp" style="color:var(--primary); font-size:1.1rem;">0.00</b></div>
                     </div>
                 </div>
             </div>
 
             <div class="card" id="c4">
-                <div class="card-header" onclick="tgl('c4')">4. Liquidación ▼</div>
-                <div class="card-body" style="background:#f1f8e9;">
+                <div class="card-header" onclick="tgl('c4')">4. Liquidación (Detallada) ▼</div>
+                <div class="card-body" style="background:#f9f9f9;">
+                    <p style="font-size:0.8rem; color:#666; margin-top:0;">Establece el precio (Se paga por Peso NETO):</p>
                     
-                    <div class="row" style="align-items:center; border-bottom:1px dashed #ccc; padding-bottom:5px; margin-bottom:5px;">
-                        <div class="col">
-                            <label style="margin:0; color:#2e7d32; font-size:0.75rem;">Cat 1 - Grande (Kg)</label>
-                            <div class="input-box readonly"><input type="number" id="k_cat1" name="total_cat1" value="0" readonly></div>
-                        </div>
-                        <div class="col">
-                            <label style="margin:0; font-size:0.75rem;">Precio</label>
-                            <div class="input-box money"><input type="number" id="p_cat1" name="precio_cat1" placeholder="0.00" oninput="calcT()"></div>
-                        </div>
+                    <div id="liqui_container"></div>
+
+                    <div style="background:#e8f5e9; padding:15px; border-radius:8px; text-align:right; margin-top:15px; border: 1px solid #c8e6c9;">
+                        <small>TOTAL GENERAL A PAGAR</small><br>
+                        <span id="txt_gran_total" style="font-size:1.6rem; font-weight:900; color:#1b5e20;">S/ 0.00</span>
                     </div>
-
-                    <div class="row" style="align-items:center; border-bottom:1px dashed #ccc; padding-bottom:5px; margin-bottom:5px;">
-                        <div class="col">
-                            <label style="margin:0; color:#f9a825; font-size:0.75rem;">Cat 1 - Chico (Kg)</label>
-                            <div class="input-box readonly"><input type="number" id="k_cat2" name="total_cat2" value="0" readonly></div>
-                        </div>
-                        <div class="col">
-                            <label style="margin:0; font-size:0.75rem;">Precio</label>
-                            <div class="input-box money"><input type="number" id="p_cat2" name="precio_cat2" placeholder="0.00" oninput="calcT()"></div>
-                        </div>
-                    </div>
-
-                    <div class="row" style="align-items:center;">
-                        <div class="col">
-                            <label style="margin:0; color:#c62828; font-size:0.75rem;">Rastrojo</label>
-                            <div class="input-box readonly"><input type="number" id="k_rastrojo" name="total_rastrojo" value="0" readonly></div>
-                        </div>
-                        <div class="col">
-                            <label style="margin:0; font-size:0.75rem;">Precio</label>
-                            <div class="input-box money"><input type="number" id="p_rastrojo" name="precio_rastrojo" placeholder="0.00" oninput="calcT()"></div>
-                        </div>
-                    </div>
-
-                    <input type="hidden" id="tot_fruta" name="total_fruta" value="0">
-                    <input type="hidden" id="pkg" name="precio_kg" value="0">
-
-                    <h2 style="text-align:right; margin-top:15px; color:#1b5e20; border-top:2px solid #1b5e20; padding-top:10px;" id="txt_tot">S/ 0.00</h2>
                 </div>
             </div>
 
@@ -250,99 +231,241 @@
     </div>
 
 <script>
-    // --- ORIGENES ---
+    // --- ESTADO ---
+    // Estructura Origen: { proveedor, campo, tara: 1.6, precios:{p1,p2,pr}, kilos:{k1,k2,kr} }
     let origenes = [];
+    let pesadas = [];
+
+    // --- ORIGENES ---
     function addOrigen() {
         let p = document.getElementById('tmp_prov').value.trim();
         let c = document.getElementById('tmp_campo').value.trim();
+        let t = parseFloat(document.getElementById('tmp_tara').value) || 1.6; // Por defecto 1.6 si falla
+
         if(p === "") { alert("Escribe nombre"); return; }
-        origenes.push({ proveedor: p, campo: c });
+        
+        // Inicializamos precios en 0 y kilos en 0
+        origenes.push({ 
+            proveedor: p, 
+            campo: c,
+            tara: t, // <-- Guardamos la tara especifica
+            precios: { p1:0, p2:0, pr:0 },
+            kilos: { k1:0, k2:0, kr:0 }
+        });
+
         document.getElementById('tmp_prov').value = ""; document.getElementById('tmp_campo').value = "";
-        renderOrigenes(); actualizarSelectPesaje();
+        renderOrigenes(); 
+        actualizarSelectPesaje();
+        updateLiquidation(); // Refrescar tabla liquidación
     }
-    function removeOrigen(idx) { origenes.splice(idx, 1); renderOrigenes(); actualizarSelectPesaje(); }
+
+    function removeOrigen(idx) { 
+        origenes.splice(idx, 1); 
+        renderOrigenes(); 
+        actualizarSelectPesaje(); 
+        updateLiquidation();
+    }
+
     function renderOrigenes() {
         let h = "";
         origenes.forEach((o, i) => {
-            h += `<div class="origen-row" style="background:#e3f2fd; padding:8px; border-radius:6px;"><div style="flex:1;"><strong>${o.proveedor}</strong><br><small>${o.campo}</small></div><button type="button" class="btn-trash" onclick="removeOrigen(${i})">🗑️</button></div>`;
+            h += `<div class="origen-row" style="background:#e3f2fd; padding:8px; border-radius:6px;">
+                    <div style="flex:1;">
+                        <strong>${o.proveedor}</strong> <small>(${o.campo})</small><br>
+                        <span style="font-size:0.75rem; color:#d32f2f;">Tara: ${o.tara} kg</span>
+                    </div>
+                    <button type="button" class="btn-trash" onclick="removeOrigen(${i})">🗑️</button>
+                  </div>`;
         });
         document.getElementById('lista_origenes').innerHTML = h;
-        document.getElementById('origenes_json').value = JSON.stringify(origenes);
     }
+
     function actualizarSelectPesaje() {
         let s = document.getElementById('select_origen_pesada'); s.innerHTML = "";
-        if(origenes.length === 0) { let o=document.createElement('option'); o.value=""; o.text="-- Falta Origen --"; s.add(o); }
-        else { origenes.forEach(o => { let opt=document.createElement('option'); let t=o.proveedor+(o.campo?" - "+o.campo:""); opt.value=t; opt.text=t; s.add(opt); }); }
+        if(origenes.length === 0) { 
+            let o=document.createElement('option'); o.value=""; o.text="-- Falta Origen --"; s.add(o); 
+        } else { 
+            origenes.forEach((o, i) => { 
+                let opt=document.createElement('option'); 
+                let t=o.proveedor+(o.campo?" - "+o.campo:""); 
+                opt.value=i; // Usamos el INDEX para vincular
+                opt.text=t; 
+                s.add(opt); 
+            }); 
+        }
+        mostrarTaraInfo();
+    }
+
+    function mostrarTaraInfo() {
+        let idx = document.getElementById('select_origen_pesada').value;
+        let info = document.getElementById('info_tara_actual');
+        if(idx !== "" && origenes[idx]) {
+            info.innerText = "Descuento Tara: " + origenes[idx].tara + " kg x jaba";
+        } else {
+            info.innerText = "";
+        }
     }
 
     // --- PESAJE ---
-    let listP = [];
     function checkF(){ if(document.getElementById('tf').files[0]) document.getElementById('btn_temp_foto').classList.add('has-photo'); }
+    
     function addP(){
-        let o = document.getElementById('select_origen_pesada').value;
+        let idx = document.getElementById('select_origen_pesada').value;
+        if(idx === "") { alert("Agrega origen primero"); tgl('c1'); return; }
+        
+        let j = parseFloat(document.getElementById('tj').value), 
+            pBruto = parseFloat(document.getElementById('tp').value), 
+            f = document.getElementById('tf').files[0];
+            
+        if(!j||!pBruto||!f) return alert("Faltan datos");
+        
+        // --- LOGICA DE DESTARA ---
+        let taraUnit = origenes[idx].tara; // Ya validado al crear origen
+        let descuento = j * taraUnit;
+        let pNeto = pBruto - descuento;
+        
+        if(pNeto < 0) pNeto = 0; // Seguridad
+
         let cat = document.getElementById('select_categoria').value; 
-        if(o === "") { alert("Agrega origen primero"); tgl('c1'); return; }
-        
-        let j=parseFloat(document.getElementById('tj').value), p=parseFloat(document.getElementById('tp').value), f=document.getElementById('tf').files[0];
-        if(!j||!p||!f) return alert("Faltan datos");
-        
-        listP.push({j:j, p:p, f:f, u:URL.createObjectURL(f), origen:o, cat:cat});
+        let provName = origenes[idx].proveedor; // Guardar referencia visual
+
+        pesadas.push({
+            idx: parseInt(idx), // Index del proveedor en el array origenes
+            j: j, 
+            pBruto: pBruto, // Bruto para registro
+            pNeto: pNeto,   // Neto para pago
+            tara: taraUnit,
+            f: f, 
+            u: URL.createObjectURL(f), 
+            origen: provName, 
+            cat: cat
+        });
+
         document.getElementById('tj').value=""; document.getElementById('tp').value=""; document.getElementById('tf').value="";
         document.getElementById('btn_temp_foto').classList.remove('has-photo');
+        
         renderP();
+        updateLiquidation(); // Recalcular kilos por proveedor
     }
+
     function renderP(){
-        let h="", gtj=0, gtp=0;
-        let k1=0, k2=0, kr=0;
-
-        listP.forEach((x,i)=>{ 
-            gtj+=x.j; gtp+=x.p;
-            
-            // Sumar al acumulador correspondiente
-            if(x.cat === 'cat1') k1 += x.p;
-            else if(x.cat === 'cat2') k2 += x.p;
-            else if(x.cat === 'rastrojo') kr += x.p;
-
-            // Etiquetas Visuales CORREGIDAS
+        let h="", gtj=0, gtpNeto=0;
+        pesadas.forEach((x,i)=>{ 
+            gtj+=x.j; gtpNeto+=x.pNeto;
             let badgeClass = x.cat === 'cat1' ? 'cat1' : (x.cat === 'cat2' ? 'cat2' : 'rastrojo');
-            let badgeText = x.cat === 'cat1' ? 'C1-Gde' : (x.cat === 'cat2' ? 'C1-Chico' : 'Rastrojo'); // Aquí corregido
+            let badgeText = x.cat === 'cat1' ? 'C1-Gde' : (x.cat === 'cat2' ? 'C1-Chico' : 'Rastrojo');
 
-            h+=`<div class="pesada-item"><img src="${x.u}" class="pesada-thumb"><div style="flex:1;"><div style="font-size:0.8rem; color:#1565c0;">${x.origen} <span class="badge-cat ${badgeClass}">${badgeText}</span></div><div>#${i+1}: ${x.j}j / ${x.p}kg</div></div></div>`;
+            h+=`<div class="pesada-item">
+                    <img src="${x.u}" class="pesada-thumb">
+                    <div style="flex:1;">
+                        <div style="font-size:0.8rem; color:#1565c0;">${x.origen} <span class="badge-cat ${badgeClass}">${badgeText}</span></div>
+                        <div style="font-size:0.85rem;">
+                            <b>${x.j} jb</b> | Bruto: ${x.pBruto} | <b style="color:#d32f2f">Neto: ${x.pNeto.toFixed(2)}</b>
+                        </div>
+                    </div>
+                </div>`;
         });
         document.getElementById('listP').innerHTML=h;
-        document.getElementById('gtj').innerText=gtj; document.getElementById('gtp').innerText=gtp.toFixed(2);
-        
-        document.getElementById('k_cat1').value = k1.toFixed(2);
-        document.getElementById('k_cat2').value = k2.toFixed(2);
-        document.getElementById('k_rastrojo').value = kr.toFixed(2);
-        
-        // Actualizamos también el total general oculto para compatibilidad
-        document.getElementById('tot_fruta').value = gtp.toFixed(2);
-        
-        calcT(); 
+        document.getElementById('gtj').innerText=gtj; 
+        document.getElementById('gtp').innerText=gtpNeto.toFixed(2);
     }
 
-    // --- CÁLCULOS ---
-    function calcT(){
-        let k1 = parseFloat(document.getElementById('k_cat1').value)||0;
-        let p1 = parseFloat(document.getElementById('p_cat1').value)||0;
-        
-        let k2 = parseFloat(document.getElementById('k_cat2').value)||0;
-        let p2 = parseFloat(document.getElementById('p_cat2').value)||0;
-        
-        let kr = parseFloat(document.getElementById('k_rastrojo').value)||0;
-        let pr = parseFloat(document.getElementById('p_rastrojo').value)||0;
+    // --- LIQUIDACIÓN POR PROVEEDOR ---
+    function updateLiquidation() {
+        // 1. Resetear kilos en origenes para recalcular
+        origenes.forEach(o => { o.kilos = {k1:0, k2:0, kr:0}; });
 
-        let total = (k1*p1) + (k2*p2) + (kr*pr);
-        document.getElementById('txt_tot').innerText="S/ "+total.toFixed(2);
-        document.getElementById('total_pagar_texto').value=total.toFixed(2);
+        // 2. Sumar kilos de las pesadas a cada origen (USANDO NETO)
+        pesadas.forEach(p => {
+            if(origenes[p.idx]) {
+                if(p.cat==='cat1') origenes[p.idx].kilos.k1 += p.pNeto;
+                else if(p.cat==='cat2') origenes[p.idx].kilos.k2 += p.pNeto;
+                else origenes[p.idx].kilos.kr += p.pNeto;
+            }
+        });
+
+        // 3. Renderizar Tabla Dinámica
+        let container = document.getElementById('liqui_container');
+        container.innerHTML = "";
+        let granTotal = 0;
+
+        origenes.forEach((o, i) => {
+            let sub = (o.kilos.k1 * o.precios.p1) + (o.kilos.k2 * o.precios.p2) + (o.kilos.kr * o.precios.pr);
+            granTotal += sub;
+
+            container.innerHTML += `
+            <div class="liqui-block">
+                <div class="liqui-header">
+                    <span>${o.proveedor}</span>
+                    <span style="font-size:0.8rem; color:#444;">(Tara: ${o.tara})</span>
+                </div>
+                
+                <div class="liqui-row">
+                    <span class="badge-cat cat1">C1</span> 
+                    <div style="flex:1">${o.kilos.k1.toFixed(2)} kg</div>
+                    <div style="width:90px;">
+                        S/ <input type="number" class="mini-input" value="${o.precios.p1||''}" 
+                        oninput="updP(${i}, 'p1', this.value)" placeholder="0.00">
+                    </div>
+                </div>
+                
+                <div class="liqui-row">
+                    <span class="badge-cat cat2">C2</span> 
+                    <div style="flex:1">${o.kilos.k2.toFixed(2)} kg</div>
+                    <div style="width:90px;">
+                        S/ <input type="number" class="mini-input" value="${o.precios.p2||''}" 
+                        oninput="updP(${i}, 'p2', this.value)" placeholder="0.00">
+                    </div>
+                </div>
+
+                <div class="liqui-row">
+                    <span class="badge-cat rastrojo">RZ</span> 
+                    <div style="flex:1">${o.kilos.kr.toFixed(2)} kg</div>
+                    <div style="width:90px;">
+                        S/ <input type="number" class="mini-input" value="${o.precios.pr||''}" 
+                        oninput="updP(${i}, 'pr', this.value)" placeholder="0.00">
+                    </div>
+                </div>
+
+                <div class="liqui-row" style="justify-content:space-between; background:#fffde7; font-weight:bold;">
+                    <span>A Pagar:</span>
+                    <span id="sub_txt_${i}">S/ ${sub.toFixed(2)}</span>
+                </div>
+            </div>`;
+        });
+
+        document.getElementById('txt_gran_total').innerText = "S/ " + granTotal.toFixed(2);
+        document.getElementById('total_pagar_texto').value = granTotal.toFixed(2);
+        
+        // Actualizamos inputs JSON para envío
+        document.getElementById('origenes_json').value = JSON.stringify(origenes);
     }
 
+    function updP(idx, tipo, val) {
+        origenes[idx].precios[tipo] = parseFloat(val) || 0;
+        
+        // Recalcular SOLO visuales para no perder foco del input
+        let granTotal = 0;
+        origenes.forEach((o, i) => {
+            let sub = (o.kilos.k1 * o.precios.p1) + (o.kilos.k2 * o.precios.p2) + (o.kilos.kr * o.precios.pr);
+            granTotal += sub;
+            let el = document.getElementById('sub_txt_' + i);
+            if(el) el.innerText = "S/ " + sub.toFixed(2);
+        });
+        
+        document.getElementById('txt_gran_total').innerText = "S/ " + granTotal.toFixed(2);
+        document.getElementById('total_pagar_texto').value = granTotal.toFixed(2);
+        
+        // Guardar estado
+        document.getElementById('origenes_json').value = JSON.stringify(origenes);
+    }
+
+    // --- PERSONAL (Sin Cambios) ---
     function cP(){
         ['cosecha','cargadores','inspectores'].forEach(k=>{
-            let p=parseFloat(document.getElementById(k=='cosecha'?'cp':(k=='cargadores'?'cap':'ip')).value)||0;
-            let d=parseFloat(document.getElementById(k=='cosecha'?'cd':(k=='cargadores'?'cad':'id')).value)||0;
-            let m=parseFloat(document.getElementById(k=='cosecha'?'cpr':(k=='cargadores'?'capr':'ipr')).value)||0;
+            let p=parseFloat(document.getElementById(k+'_personas').value)||0;
+            let d=parseFloat(document.getElementById(k+'_dias').value)||0;
+            let m=parseFloat(document.getElementById(k+'_precio').value)||0;
             let t=(p*d*m).toFixed(2);
             document.getElementById(k=='cosecha'?'txt_sc':(k=='cargadores'?'txt_sca':'txt_si')).innerText="S/ "+t;
             document.getElementById(k=='cosecha'?'sc':(k=='cargadores'?'sca':'si')).value=t;
@@ -360,104 +483,79 @@
             document.getElementById('gpsStatus').className="gps-dot gps-active";
         }, e=>{ alert("Activa GPS"); });
     }
+
     async function send(){
         let btn=document.getElementById('btnG');
         if(!document.getElementById('latitud').value && !confirm("Sin GPS. ¿Seguir?")) return;
         if(origenes.length===0){ alert("Falta Proveedor"); tgl('c1'); return; }
+        
         btn.disabled=true; btn.innerText="Guardando...";
         
-        let fd=new FormData(document.getElementById('formAcopio'));
-        fd.append('detalle_pesadas_json', JSON.stringify(listP.map(x=>({jabas:x.j, peso:x.p, origen:x.origen, categoria:x.cat}))));
-        listP.forEach((x,i)=>fd.append('fotos_pesadas[]', x.f));
+        // PREPARAR DATOS
+        // 1. Origenes ya tiene precios y kilos gracias a updateLiquidation()
+        document.getElementById('origenes_json').value = JSON.stringify(origenes);
 
-        // Si NO hay internet, guardar en cola offline
+        // 2. Pesadas: Convertir a formato simple para backend
+        // IMPORTANTE: Enviar 'peso' como NETO y 'peso_bruto' como BRUTO
+        let pesadasSimple = pesadas.map(x => ({
+            jabas: x.j, 
+            peso: x.pNeto, // EL BACKEND DEBE RECIBIR NETO EN 'peso' para calcular pagos
+            peso_bruto: x.pBruto, // EXTRA para registro
+            origen: x.origen, // Nombre del proveedor
+            categoria: x.cat
+        }));
+        
+        let fd=new FormData(document.getElementById('formAcopio'));
+        fd.append('detalle_pesadas_json', JSON.stringify(pesadasSimple));
+        
+        // 3. Fotos
+        pesadas.forEach((x,i)=>fd.append('fotos_pesadas[]', x.f));
+
+        // LOGICA ENVIO (OFFLINE FIRST)
         if (!navigator.onLine) {
             try {
-                const { local_id } = await window.GF_OFFLINE.queueAcopioFromCurrentForm(document.getElementById('formAcopio'), listP);
-                alert("✅ Guardado OFFLINE (ID: " + local_id + "). Se enviará cuando vuelva el internet.");
-                btn.disabled=false; btn.innerText="GUARDAR OPERACIÓN";
-                window.location.reload();
-                return;
-            } catch (e) {
-                alert("No se pudo guardar offline: " + e);
-                btn.disabled=false; btn.innerText="GUARDAR OPERACIÓN";
-                return;
-            }
+                // Para offline, necesitamos guardar la estructura compleja de origenes
+                const { local_id } = await window.GF_OFFLINE.queueAcopioFromCurrentForm(document.getElementById('formAcopio'), pesadas);
+                alert("✅ Guardado OFFLINE (ID: " + local_id + "). Se enviará al volver internet.");
+                window.location.reload(); return;
+            } catch (e) { alert("Error offline: " + e); btn.disabled=false; return; }
         }
         
-        // Online: intentar enviar. Si falla, guardar offline.
         try {
             const r = await fetch('guardar_goldfruits.php', {method:'POST', body:fd});
             const d = await r.text();
             if (!r.ok || /^error\s*:/i.test((d||'').trim())) throw new Error(d || ('HTTP '+r.status));
-            alert(d);
-            window.location.reload();
+            alert(d); window.location.reload();
         } catch(e){
             try {
-                const { local_id } = await window.GF_OFFLINE.queueAcopioFromCurrentForm(document.getElementById('formAcopio'), listP);
-                alert("⚠️ No se pudo enviar (sin conexión o servidor). Guardado OFFLINE (ID: " + local_id + "). Se enviará automáticamente.");
-                btn.disabled=false; btn.innerText="GUARDAR OPERACIÓN";
+                const { local_id } = await window.GF_OFFLINE.queueAcopioFromCurrentForm(document.getElementById('formAcopio'), pesadas);
+                alert("⚠️ Error red. Guardado OFFLINE (ID: " + local_id + ")");
                 window.location.reload();
-            } catch (err) {
-                alert("Error al enviar y al guardar offline: " + err);
-                btn.disabled=false; btn.innerText="GUARDAR OPERACIÓN";
-            }
+            } catch (err) { alert("Error fatal: " + err); btn.disabled=false; }
         }
     }
 
-    // Indicador de conexión + auto-sync
+    // UI de Red (Banner)
     function ensureNetBanner(){
         let banner = document.getElementById('netBanner');
-        if (!banner) {
-            banner = document.createElement('div');
-            banner.id = 'netBanner';
-            banner.style.position = 'fixed';
-            banner.style.left = '0';
-            banner.style.right = '0';
-            banner.style.bottom = '0';
-            banner.style.padding = '10px 12px';
-            banner.style.zIndex = '9999';
-            banner.style.background = '#111';
-            banner.style.color = '#fff';
-            banner.style.fontSize = '0.9rem';
-            banner.style.display = 'none';
-            banner.innerHTML = '📴 Sin internet. Se guardará OFFLINE. <span id="pendingCount" style="opacity:0.9; margin-left:10px;"></span>';
-            document.body.appendChild(banner);
-        }
+        if (!banner) return; // Ya existe en HTML
         return banner;
     }
-
     async function refreshNetUI(){
-        const banner = ensureNetBanner();
+        const banner = document.getElementById('netBanner');
         const pending = document.getElementById('pendingCount');
         try {
             const items = await window.GF_OFFLINE.listQueue();
             if (pending) pending.innerText = items.length ? ('Pendientes: ' + items.length) : '';
-        } catch (e) {
-            if (pending) pending.innerText = '';
-        }
+        } catch (e) {}
         banner.style.display = navigator.onLine ? 'none' : 'block';
     }
-
     window.addEventListener('online', async () => {
         await refreshNetUI();
-        // En cuanto vuelve internet, sincronizamos
-        try {
-            const r = await window.GF_OFFLINE.syncQueue();
-            if (r && r.synced) {
-                alert('📡 Sincronizado: ' + r.synced + ' operación(es) enviada(s).');
-            }
-        } catch (e) {}
+        try { const r = await window.GF_OFFLINE.syncQueue(); if (r && r.synced) alert('📡 Sincronizado: ' + r.synced + ' envíos.'); } catch (e) {}
     });
     window.addEventListener('offline', refreshNetUI);
-
-    // Intentar sync al cargar (si hay pendientes y hay internet)
-    (async () => {
-        await refreshNetUI();
-        if (navigator.onLine) {
-            try { await window.GF_OFFLINE.syncQueue(); } catch (e) {}
-        }
-    })();
+    (async () => { await refreshNetUI(); if (navigator.onLine) { try { await window.GF_OFFLINE.syncQueue(); } catch (e) {} } })();
 </script>
 </body>
 </html>

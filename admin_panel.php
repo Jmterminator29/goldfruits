@@ -2,13 +2,14 @@
 require_once 'auth_admin.php'; // Candado de Admin
 require_once 'db_connect.php';
 
-// Consultar TODO (Uniendo con la tabla usuarios para saber quién lo hizo)
+// CONSULTA CORREGIDA: Sin proveedor_comercial
 $sql = "SELECT a.id, a.codigo_unico,
-               COALESCE(NULLIF(a.proveedor_comercial,''), a.proveedor) AS proveedor_mostrar,
+               a.proveedor AS proveedor_mostrar, 
                a.fecha_registro, a.estado, a.total_kilos_neto, u.nombre_completo as autor 
         FROM acopios_cabecera a
         JOIN usuarios u ON a.usuario_id = u.id
         ORDER BY a.fecha_registro DESC";
+
 $stmt = $conn->prepare($sql);
 $stmt->execute();
 $solicitudes = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -21,14 +22,14 @@ $solicitudes = $stmt->fetchAll(PDO::FETCH_ASSOC);
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
     <title>Admin | GoldFruits</title>
     <style>
-        :root { --primary: #0d47a1; --gold: #ffca28; --bg: #f0f2f5; --text: #212121; } /* Azul para diferenciar Admin */
+        :root { --primary: #0d47a1; --gold: #ffca28; --bg: #f0f2f5; --text: #212121; }
         body { font-family: sans-serif; background: var(--bg); margin: 0; padding-bottom: 50px; }
         .app-bar { background: var(--primary); color: white; padding: 15px; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 5px rgba(0,0,0,0.2); display: flex; justify-content: space-between; align-items: center; }
         .container { padding: 15px; max-width: 800px; margin: 0 auto; }
         
         .card { background: white; border-radius: 8px; padding: 15px; margin-bottom: 15px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-left: 5px solid #ccc; position: relative; }
-        .card.abierto { border-left-color: #4caf50; } /* Verde = Abierto */
-        .card.terminado { border-left-color: #555; background: #fafafa; } /* Gris = Cerrado */
+        .card.abierto { border-left-color: #4caf50; } 
+        .card.terminado { border-left-color: #555; background: #fafafa; } 
         
         .header { display: flex; justify-content: space-between; margin-bottom: 5px; }
         .autor { font-size: 0.75rem; color: #666; text-transform: uppercase; letter-spacing: 1px; }
