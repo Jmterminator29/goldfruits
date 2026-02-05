@@ -11,26 +11,49 @@ $anio = date('Y');
 $fi = $_GET['fi'] ?? '';
 $ff = $_GET['ff'] ?? '';
 
+// Helpers PHP
 function lastDayOfMonth($y, $m) { return date('Y-m-d', strtotime("$y-$m-01 +1 month -1 day")); }
 function pad2($n) { return str_pad($n, 2, '0', STR_PAD_LEFT); }
 
 if ($fi === '' || $ff === '') {
     $m = (int)$mes; $y = (int)$anio; $prevM = $m - 1; $prevY = $y;
     if ($prevM <= 0) { $prevM = 12; $prevY = $y - 1; }
-    $lastPrev = lastDayOfMonth($prevY, $prevM); $lastCurr = lastDayOfMonth($y, $m);
-    if ($periodo === '1RA QUINCENA') { $fi = $fi ?: $lastPrev; $ff = $ff ?: ($y . '-' . pad2($m) . '-15'); } 
-    else { $fi = $fi ?: ($y . '-' . pad2($m) . '-16'); $ff = $ff ?: $lastCurr; }
+    
+    $lastPrev = lastDayOfMonth($prevY, $prevM);
+    $lastCurr = lastDayOfMonth($y, $m);
+
+    if ($periodo === '1RA QUINCENA') { 
+        $fi = $fi ?: $lastPrev; 
+        $ff = $ff ?: ($y . '-' . pad2($m) . '-15'); 
+    } else { 
+        $fi = $fi ?: ($y . '-' . pad2($m) . '-16'); 
+        $ff = $ff ?: $lastCurr; 
+    }
 }
 
+// 2. Configuración Global (RMV)
 $res_c = mysqli_query($conexion, "SELECT valor FROM configuracion_global WHERE clave='RMV'");
 $rmv = mysqli_fetch_assoc($res_c)['valor'] ?? 1130.00;
 
-// 3. Obtener Trabajadores
+// 3. Obtener Trabajadores y Nóminas (CONSULTA CORREGIDA PARA TRAER DATOS GUARDADOS)
 $trabajadores_db = [];
 $sql = "SELECT t.id_trabajador, t.apellidos_nombres, t.numero_documento, c.monto_categoria,
                t.tiene_hijos, t.en_planilla, COALESCE(a.porcentaje_descuento, 0) as p_seguro,
                COALESCE(a.nombre_aseguradora, 'S.S') as nom_seg,
-               n.id_nomina, n.dias_trabajados as dias_guardados, n.detalle_horarios, n.bono_nocturno
+               n.id_nomina,
+               n.dias_trabajados as dias_guardados,
+               n.detalle_horarios,
+               /* DATOS RECUPERADOS DE LA BD */
+               n.horas_normales_total,
+               n.horas_25_total,
+               n.horas_35_total,
+               n.horas_nocturnas_total,
+               n.monto_base_afp,
+               n.monto_afp,
+               n.monto_neto_final,
+               n.bono_beta,
+               n.bono_extra_6,
+               n.bono_nocturno
         FROM trabajadores t
         LEFT JOIN categorias_pago c ON t.id_categoria = c.id_categoria
         LEFT JOIN aseguradoras a ON t.id_aseguradora = a.id_aseguradora
@@ -63,7 +86,7 @@ while($t = mysqli_fetch_assoc($res_t)) {
 
   /* --- Panel de Carga --- */
   .seccion-carga { background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin-bottom: 20px; }
-  .range-box{ background:#fff; border-radius:12px; padding:12px; box-shadow:0 4px 12px rgba(0,0,0,0.05); }
+  .range-box { background:#fff; border-radius:12px; padding:12px; box-shadow:0 4px 12px rgba(0,0,0,0.05); }
 
   /* --- Z-INDEX FIX --- */
   .modal-backdrop { z-index: 2000 !important; }
@@ -76,7 +99,7 @@ while($t = mysqli_fetch_assoc($res_t)) {
   .time-field { width: 90px !important; border: 1px solid #ced4da; border-radius: 5px; text-align: center; font-weight: 600; color: #2c3e50; }
   .f-txt { font-weight: 700; color: #0d6efd; font-size: 0.85rem; }
   .total-row td { background-color: #212529; color: #fff; font-weight: bold; }
-
+  
   /* --- VISIBILIDAD --- */
   .fila-oculta { display: none; }
   .busqueda-flotante { position: relative; }
@@ -229,9 +252,18 @@ while($t = mysqli_fetch_assoc($res_t)) {
                 <?php $i=0; foreach($trabajadores_db as $dni => $t): $i++;
                     $diasBD = $t['dias_guardados'] ?? 0;
                     $jsonDB = htmlspecialchars($t['detalle_horarios'] ?? '', ENT_QUOTES, 'UTF-8');
-                    $claseOculta = ($diasBD > 0) ? '' : 'fila-oculta';
                     
-                    // Clase especial si no está en planilla
+                    // --- CORRECCIÓN CLAVE: PRECARGA DE DATOS GUARDADOS ---
+                    $hN_bd = $t['horas_normales_total'] ?? '00:00';
+                    $h25_bd = $t['horas_25_total'] ?? '00:00';
+                    $h35_bd = $t['horas_35_total'] ?? '00:00';
+                    $hNoct_bd = $t['horas_nocturnas_total'] ?? '00:00';
+                    $bonoNoct_bd = $t['bono_nocturno'] ?? 0;
+                    $bonoBeta_bd = $t['bono_beta'] ?? 0;
+                    $bono6_bd = $t['bono_extra_6'] ?? 0;
+                    
+                    // Visibilidad
+                    $claseOculta = ($diasBD > 0) ? '' : 'fila-oculta';
                     $claseNoPlanilla = ($t['en_planilla'] === 'NO') ? 'fila-no-planilla' : '';
                     $iconoNoPlanilla = ($t['en_planilla'] === 'NO') ? '<i class="bi bi-cone-striped text-warning me-1"></i>' : '';
                 ?>
@@ -257,6 +289,7 @@ while($t = mysqli_fetch_assoc($res_t)) {
                             <input type="hidden" name="trab[<?= $i ?>][json_horarios]" class="val-json" value="<?= $jsonDB ?>">
                         </td>
                         <td><input type="number" name="trab[<?= $i ?>][dias]" class="inp-invisible inp-dias" value="<?= $diasBD ?>" readonly></td>
+                        
                         <td class="lbl-rb text-muted small">0.0000</td>
                         <td class="lbl-grati text-muted small">0.0000</td>
                         <td class="lbl-cts text-muted small">0.0000</td>
@@ -272,16 +305,17 @@ while($t = mysqli_fetch_assoc($res_t)) {
                         <td>
                             <button type="button" class="btn btn-sm btn-outline-secondary py-0 border-0" onclick="abrirModalAsistencia('<?= $dni ?>')"><i class="bi bi-pencil-square fs-6"></i></button>
                         </td>
-                        <input type="hidden" name="trab[<?= $i ?>][horas_n]" class="val-hN">
-                        <input type="hidden" name="trab[<?= $i ?>][horas_25]" class="val-h25">
-                        <input type="hidden" name="trab[<?= $i ?>][horas_35]" class="val-h35">
-                        <input type="hidden" name="trab[<?= $i ?>][horas_noct]" class="val-hNoct">
+
+                        <input type="hidden" name="trab[<?= $i ?>][horas_n]" class="val-hN" value="<?= $hN_bd ?>">
+                        <input type="hidden" name="trab[<?= $i ?>][horas_25]" class="val-h25" value="<?= $h25_bd ?>">
+                        <input type="hidden" name="trab[<?= $i ?>][horas_35]" class="val-h35" value="<?= $h35_bd ?>">
+                        <input type="hidden" name="trab[<?= $i ?>][horas_noct]" class="val-hNoct" value="<?= $hNoct_bd ?>">
                         <input type="hidden" name="trab[<?= $i ?>][base_afp]" class="val-base">
                         <input type="hidden" name="trab[<?= $i ?>][afp_monto]" class="val-afp">
                         <input type="hidden" name="trab[<?= $i ?>][neto]" class="val-neto">
-                        <input type="hidden" name="trab[<?= $i ?>][bono_beta]" class="val-beta">
-                        <input type="hidden" name="trab[<?= $i ?>][bono_6]" class="val-bono6">
-                        <input type="hidden" name="trab[<?= $i ?>][bono_nocturno]" class="val-bnoct">
+                        <input type="hidden" name="trab[<?= $i ?>][bono_beta]" class="val-beta" value="<?= $bonoBeta_bd ?>">
+                        <input type="hidden" name="trab[<?= $i ?>][bono_6]" class="val-bono6" value="<?= $bono6_bd ?>">
+                        <input type="hidden" name="trab[<?= $i ?>][bono_nocturno]" class="val-bnoct" value="<?= $bonoNoct_bd ?>">
                     </tr>
                 <?php endforeach; ?>
                 </tbody>
@@ -356,17 +390,19 @@ while($t = mysqli_fetch_assoc($res_t)) {
 
 <script>
 // --- Variables Globales ---
-const RMV = <?= $rmv ?>;
+const RMV = <?= $rmv ?>; // 1130
 const trabajadoresDB = <?= json_encode($trabajadores_db) ?>;
 let asistenciaGlobal = {}, datosTemporalesExcel = {}, datosDesconocidos = {}, dniActivo = null;
 
+// --- MOVER MODALES AL BODY ---
 document.addEventListener('DOMContentLoaded', function() {
     ['modalAsistencia', 'modalCrearTrabajador'].forEach(id => { var el=document.getElementById(id); if(el) document.body.appendChild(el); });
     Object.keys(trabajadoresDB).forEach(dni => { asistenciaGlobal[dni] = { nombre: trabajadoresDB[dni].apellidos_nombres, dias: {} }; });
     pintarRangoActivo();
-    recalcularTodo();
+    recalcularTodo(); // ESTO RECUPERA LOS DATOS VISUALMENTE
 });
 
+// --- VISIBILIDAD ---
 function filtrarBusqueda(input) {
     const txt = input.value.toLowerCase().trim(); const lista = document.getElementById('listaResultados'); lista.innerHTML = '';
     if(txt.length < 2) { lista.style.display = 'none'; return; }
@@ -396,6 +432,7 @@ function toggleVerTodos() {
     recalcTotalGeneral();
 }
 
+// --- EXCEL ---
 function procesarArchivoExcel() {
     const rango = getRangoActivo(); if(!rango) return alert("Rango inválido.");
     const file = document.getElementById('inputExcel').files[0]; if(!file) return alert("Seleccione archivo.");
@@ -407,41 +444,28 @@ function procesarArchivoExcel() {
             datosTemporalesExcel = {}; datosDesconocidos = {};
             let start = 0;
             for(let i=0;i<json.length;i++){ if(json[i][0] && String(json[i][0]).length>=8){ start=i; break; } }
-
             for(let i=start; i<json.length; i++){
                 const row = json[i]; if(!row[0]) continue;
                 let dni = String(row[0]).trim().replace(/^0+/,'');
                 if(!asistenciaGlobal[dni]) { datosDesconocidos[dni] = row[1]||'S/N'; continue; }
                 const fISO = parseFechaFlexible(row[4]);
                 if(!fISO || !dentroDeRango(fISO, rango)) continue;
-                
                 let raw = String(row[6]||"").replace(/;/g,',').split(',');
                 let arr = [];
                 for(let k=0;k<raw.length;k++){
                     let s = parseTime(raw[k].trim());
                     if(s>0){
-                        // --- REDONDEO 5 MINUTOS ---
-                        // Entrada (Indices Pares): Redondear ARRIBA (Ceil)
-                        // Salida (Indices Impares): Redondear ABAJO (Floor)
-                        let totalM = s/60; // Minutos totales
+                        // Redondeo 5 min
+                        let totalM = s/60; 
                         let roundedM = 0;
-                        if(k % 2 === 0) {
-                            // Entrada: 08:01 -> 08:05
-                            roundedM = Math.ceil(totalM / 5) * 5;
-                        } else {
-                            // Salida: 18:04 -> 18:00
-                            roundedM = Math.floor(totalM / 5) * 5;
-                        }
-                        
+                        if(k % 2 === 0) roundedM = Math.ceil(totalM / 5) * 5; // Entrada
+                        else roundedM = Math.floor(totalM / 5) * 5; // Salida
                         let h = Math.floor(roundedM / 60);
                         let m = roundedM % 60;
                         arr.push(`${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:00`);
                     }
                 }
-                if(arr.length>0) {
-                    if(!datosTemporalesExcel[dni]) datosTemporalesExcel[dni]={};
-                    datosTemporalesExcel[dni][fISO] = {raw: arr.join(',')};
-                }
+                if(arr.length>0) { if(!datosTemporalesExcel[dni]) datosTemporalesExcel[dni]={}; datosTemporalesExcel[dni][fISO] = {raw: arr.join(',')}; }
             }
             renderReporte();
         } catch(e){ console.error(e); alert("Error leyendo Excel."); }
@@ -475,6 +499,7 @@ function confirmarInyeccion() {
 }
 function cancelarCarga(){ document.getElementById('resumenCarga').classList.add('d-none'); }
 
+// --- CALCULOS FILA (COMPLETO) ---
 function inyectarFilaEspecifica(dni){
     const tr=document.getElementById('fila-'+dni); if(!tr) return;
     let obj={}; try{obj=JSON.parse(tr.querySelector('.val-json').value||'{}')}catch(e){}
@@ -484,7 +509,7 @@ function inyectarFilaEspecifica(dni){
 
     let tN=0,t25=0,t35=0,tNoct=0;
     for(let f in obj){
-        let s=0, r=(obj[f].raw||"").split(',');
+        let s=0; const r=(obj[f].raw||"").split(',');
         for(let i=0;i<r.length;i+=2){
             const t1=parseTime(r[i]), t2=parseTime(r[i+1]);
             if(t2>t1){ s+=(t2-t1); tNoct+=calculateNightSeconds(t1,t2); }
@@ -493,38 +518,62 @@ function inyectarFilaEspecifica(dni){
         tN+=Math.min(h,8); let ex=Math.max(0,h-8); t25+=Math.min(ex,2); t35+=Math.max(0,ex-2);
     }
     tr.querySelector('.inp-dias').value=k.length;
-    tr.querySelector('.val-hN').value=decimalToTime(tN); tr.querySelector('.val-h25').value=decimalToTime(t25);
-    tr.querySelector('.val-h35').value=decimalToTime(t35); tr.querySelector('.val-hNoct').value=decimalToTime(tNoct/3600);
+    tr.querySelector('.val-hN').value=decimalToTime(tN); 
+    tr.querySelector('.val-h25').value=decimalToTime(t25);
+    tr.querySelector('.val-h35').value=decimalToTime(t35); 
+    tr.querySelector('.val-hNoct').value=decimalToTime(tNoct/3600);
+    
     calcularFila(tr);
 }
 
 function calcularFila(tr) {
-    const rb=parseFloat(tr.dataset.rb)||0, ps=parseFloat(tr.dataset.seg)||0, h=parseInt(tr.dataset.hijos)||0;
-    const enPlanilla = tr.dataset.planilla; // 'SI' o 'NO'
+    const rb = parseFloat(tr.dataset.rb) || 0;
+    const ps = parseFloat(tr.dataset.seg) || 0;
+    const hijos = parseInt(tr.dataset.hijos) || 0;
+    const enPlanilla = tr.dataset.planilla; 
 
-    const hN=parseTime(tr.querySelector('.val-hN').value)/3600, h25=parseTime(tr.querySelector('.val-h25').value)/3600;
-    const h35=parseTime(tr.querySelector('.val-h35').value)/3600, hNoct=parseTime(tr.querySelector('.val-hNoct').value)/3600;
+    // Horas decimales
+    const hN = parseTime(tr.querySelector(".val-hN").value)/3600;
+    const h25 = parseTime(tr.querySelector(".val-h25").value)/3600;
+    const h35 = parseTime(tr.querySelector(".val-h35").value)/3600;
+    const hNoct = parseTime(tr.querySelector(".val-hNoct").value)/3600;
 
-    const rbh=rb/30/8; 
-    const gh_hora=rbh*0.1666, ct_hora=rbh*0.0972; 
-    const jornal=rbh+gh_hora+ct_hora;
+    // VALORES UNITARIOS
+    const rbh = rb / 30 / 8; // Basico Hora
+    const gh_hora = rbh * 0.1666; 
+    const ct_hora = rbh * 0.0972; 
+    const jornal_hora_total = rbh + gh_hora + ct_hora; 
 
-    // Asig Fam Horarizada
-    // (RMV / 30 * 0.10) / 8 * Horas Trabajadas
-    const af_hora = (RMV/30*0.10)/8;
-    const af = h ? (af_hora * hN) : 0;
+    // ASIGNACION FAMILIAR
+    const af_valor_dia = (RMV / 30) * 0.10;
+    const af_valor_hora = af_valor_dia / 8;
+    const af = hijos ? (af_valor_hora * hN) : 0;
 
-    const rb_p=hN*rbh, e25_p=h25*jornal*1.25, e35_p=h35*jornal*1.35, pNoct=hNoct*jornal*0.35;
-    const grati=hN*gh_hora, cts=hN*ct_hora;
+    // CALCULOS
+    const rb_p = hN * rbh;
+    const e25_p = h25 * (jornal_hora_total * 1.25); 
+    const e35_p = h35 * (jornal_hora_total * 1.35);
+    const bono_nocturno = hNoct * (jornal_hora_total * 0.35);
 
-    let cB=0; let obj={}; try{obj=JSON.parse(tr.querySelector('.val-json').value||'{}')}catch(e){}
-    for(let f in obj){
-        let s=0, r=(obj[f].raw||"").split(',');
-        for(let i=0;i<r.length;i+=2){ let t1=parseTime(r[i]), t2=parseTime(r[i+1]); if(t2>t1)s+=(t2-t1); }
-        if(redondearATiempoExacto(s)>14400) cB++;
+    const grati_total = hN * gh_hora;
+    const cts_total = hN * ct_hora;
+
+    // Bono Beta (> 4 horas)
+    let cB = 0; 
+    let diasObj = {}; try { diasObj = JSON.parse(tr.querySelector('.val-json').value || '{}'); } catch(e){}
+    for(let f in diasObj){
+        let s=0; const raw = (diasObj[f].raw || "").split(',');
+        for(let i=0;i<raw.length-1;i+=2){
+            let t1=parseTime(raw[i]), t2=parseTime(raw[i+1]);
+            if(t2>t1) s+=(t2-t1);
+        }
+        if(redondearATiempoExacto(s) > 14400) cB++;
     }
-    const beta=cB*((RMV*0.30)/30), bet6=grati*0.06;
-    const base=rb_p+e25_p+e35_p+af+pNoct;
+    const beta = cB * ((RMV * 0.30)/30); 
+    const bet6 = grati_total * 0.06;
+
+    // TOTALES
+    const base = rb_p + e25_p + e35_p + af + bono_nocturno;
     
     // DESCUENTO AFP: 0 si no esta en planilla
     let afp = 0;
@@ -532,27 +581,37 @@ function calcularFila(tr) {
         afp = base * (ps/100);
     }
 
-    const neto=base-afp+grati+cts+beta+bet6;
+    const neto = base - afp + grati_total + cts_total + beta + bet6;
 
-    tr.querySelector('.lbl-rb').innerText=rbh.toFixed(4); tr.querySelector('.lbl-grati').innerText=gh_hora.toFixed(4);
-    tr.querySelector('.lbl-cts').innerText=ct_hora.toFixed(4); tr.querySelector('.lbl-jornal-h').innerText=jornal.toFixed(4);
-    tr.querySelector('.txt-he25').innerText=decimalToTime(h25); tr.querySelector('.txt-he35').innerText=decimalToTime(h35);
-    tr.querySelector('.lbl-asig-fam').innerText=af.toFixed(2); tr.querySelector('.lbl-bnoct').innerText=decimalToTime(hNoct);
-    tr.querySelector('.lbl-bet-6').innerText=bet6.toFixed(2); tr.querySelector('.lbl-beta-bono').innerText=beta.toFixed(2);
+    // VISUAL
+    tr.querySelector(".lbl-rb").innerText = rbh.toFixed(4);
+    tr.querySelector(".lbl-grati").innerText = gh_hora.toFixed(4);
+    tr.querySelector(".lbl-cts").innerText = ct_hora.toFixed(4);
+    tr.querySelector(".lbl-jornal-h").innerText = jornal_hora_total.toFixed(4);
+    tr.querySelector(".txt-he25").innerText = decimalToTime(h25);
+    tr.querySelector(".txt-he35").innerText = decimalToTime(h35);
     
-    // Pintamos descuento
-    tr.querySelector('.lbl-descto').innerText=afp.toFixed(2);
-    tr.querySelector('.lbl-neto').innerText=neto.toFixed(2);
+    tr.querySelector(".lbl-asig-fam").innerText = af.toFixed(2);
+    tr.querySelector(".lbl-bnoct").innerText = decimalToTime(hNoct);
+    tr.querySelector(".lbl-bet-6").innerText = bet6.toFixed(2);
+    tr.querySelector(".lbl-beta-bono").innerText = beta.toFixed(2);
+    tr.querySelector(".lbl-descto").innerText = afp.toFixed(2);
+    tr.querySelector(".lbl-neto").innerText = neto.toFixed(2);
 
-    tr.querySelector('.val-base').value=base.toFixed(4); tr.querySelector('.val-afp').value=afp.toFixed(2);
-    tr.querySelector('.val-neto').value=neto.toFixed(2); tr.querySelector('.val-beta').value=beta.toFixed(2);
-    tr.querySelector('.val-bono6').value=bet6.toFixed(2); tr.querySelector('.val-bnoct').value=pNoct.toFixed(2);
+    // HIDDEN
+    tr.querySelector(".val-base").value = base.toFixed(4);
+    tr.querySelector(".val-afp").value = afp.toFixed(2);
+    tr.querySelector(".val-neto").value = neto.toFixed(2);
+    tr.querySelector(".val-beta").value = beta.toFixed(2);
+    tr.querySelector(".val-bono6").value = bet6.toFixed(2);
+    tr.querySelector(".val-bnoct").value = bono_nocturno.toFixed(2);
     
     recalcTotalGeneral();
 }
 
 function recalcTotalGeneral(){
-    let t=0; document.querySelectorAll('.fila-nomina:not(.fila-oculta) .lbl-neto').forEach(e=>t+=parseFloat(e.innerText)||0);
+    let t=0;
+    document.querySelectorAll('.fila-nomina:not(.fila-oculta) .lbl-neto').forEach(e=>t+=parseFloat(e.innerText)||0);
     document.getElementById('totalGeneral').innerText=t.toFixed(2);
 }
 
@@ -574,7 +633,16 @@ function enviarNomina(st){
     document.querySelectorAll('.fila-nomina').forEach(tr=>{ let o={};try{o=JSON.parse(tr.querySelector('.val-json').value)}catch(e){} tr.querySelector('.val-json').value=JSON.stringify(filtrarDiasPorRango(o,r)); });
     const fd=new FormData(document.getElementById('formNomina'));
     fd.append('estado_pago',st); fd.append('mes_pago',document.getElementById('mes_pago_sel').value); fd.append('periodo_pago',document.getElementById('periodo_pago_sel').value);
-    fetch('controllers/guardar_nomina.php',{method:'POST',body:fd}).then(r=>r.text()).then(()=>alert("Cambios Guardados."));
+    
+    const btn = document.querySelector("button[onclick*='enviarNomina']");
+    const old = btn.innerHTML;
+    btn.innerHTML = `<span class="spinner-border spinner-border-sm"></span> Guardando...`; btn.disabled = true;
+
+    fetch('controllers/guardar_nomina.php',{method:'POST',body:fd})
+    .then(r=>r.text())
+    .then(res=>{ alert(res); location.reload(); })
+    .catch(e=>alert("Error"))
+    .finally(() => { btn.innerHTML = old; btn.disabled = false; });
 }
 
 // Modales
@@ -583,7 +651,22 @@ function abrirModalAsistencia(dni){ dniActivo=dni; document.getElementById('moda
 function genInp(v1,v2,f){ return `<div class="tramo-input d-flex align-items-center gap-1 mb-1"><input type="time" class="time-field form-control form-control-sm" value="${v1}" onchange="recalcM(this)"><i class="bi bi-arrow-right small"></i><input type="time" class="time-field form-control form-control-sm" value="${v2}" onchange="recalcM(this)">${f?'':`<button class="btn btn-sm text-danger ms-1" onclick="this.parentElement.remove();sumM()">x</button>`}</div>`; }
 function addTramo(b){ const d=document.createElement('div'); d.innerHTML=genInp("00:00","00:00",false); b.previousElementSibling.appendChild(d.firstElementChild); }
 function agregarDiaModal(){ const r=getRangoActivo(); const f=prompt(`Fecha (${r.fi}-${r.ff}):`); if(!f||!dentroDeRango(f,r))return alert("Fecha inválida"); let ex=false; document.querySelectorAll('.f-txt').forEach(s=>{if(s.innerText==f)ex=true}); if(ex)return alert("Ya existe"); const b=document.getElementById('bodyModal'); if(b.querySelector('td[colspan]')) b.innerHTML=""; const tr=document.createElement('tr'); tr.className="text-center"; tr.innerHTML=`<td><span class="f-txt">${f}</span></td><td class="text-start"><div class="tramos-container">${genInp("08:00","17:00",true)}</div><button class="btn btn-link btn-sm p-0 text-success" onclick="addTramo(this)">+ Int</button></td><td class="c-n"></td><td class="c-25"></td><td class="c-35"></td><td><button class="btn btn-sm text-danger" onclick="this.closest('tr').remove();sumM()">x</button></td>`; b.appendChild(tr); recalcM(tr.querySelector('input')); }
-function guardarCambiosModal(){ const n={}, r=getRangoActivo(); document.querySelectorAll('#bodyModal tr').forEach(tr=>{ const f=tr.querySelector('.f-txt')?.innerText; if(f&&dentroDeRango(f,r)){ const t=[]; tr.querySelectorAll('input').forEach(i=>t.push(i.value+":00")); if(t.length>0) n[f]={raw:t.join(',')}; } }); document.getElementById('fila-'+dniActivo).querySelector('.val-json').value=JSON.stringify(n); inyectarFilaEspecifica(dniActivo); bootstrap.Modal.getInstance(document.getElementById('modalAsistencia')).hide(); }
+function guardarCambiosModal(){ const n={}, r=getRangoActivo(); document.querySelectorAll('#bodyModal tr').forEach(tr=>{ const f=tr.querySelector('.f-txt')?.innerText; if(f&&dentroDeRango(f,r)){ const t=[]; tr.querySelectorAll('input').forEach(i=>{ if(i.value){ let v=i.value; if(v.length===5)v+=":00"; t.push(v); } }); if(t.length>0 && t.length%2===0) n[f]={raw:t.join(',')}; } }); document.getElementById('fila-'+dniActivo).querySelector('.val-json').value=JSON.stringify(n); inyectarFilaEspecifica(dniActivo); bootstrap.Modal.getInstance(document.getElementById('modalAsistencia')).hide(); }
 function abrirModalCrearTrabajador(){ const k=Object.keys(datosDesconocidos)[0]; if(k){document.getElementById('new_dni').value=k; document.getElementById('new_nombre').value=datosDesconocidos[k];} new bootstrap.Modal(document.getElementById('modalCrearTrabajador')).show(); }
 function guardarTrabajadorFast(){ const d=document.getElementById('new_dni').value, n=document.getElementById('new_nombre').value; if(!d||!n)return alert("Faltan datos"); const fd=new FormData(); fd.append('accion','crear_rapido'); fd.append('dni',d); fd.append('nombre',n); fetch('controllers/trabajador_controller.php',{method:'POST',body:fd}).then(r=>r.json()).then(res=>{ if(res.success){ alert("Creado"); location.reload(); }else alert(res.message); }).catch(e=>alert("Error")); }
+
+function recalcM(el){
+    if(!el) return;
+    const tr=el.closest('tr'); let s=0;
+    tr.querySelectorAll('.tramo-input').forEach(d=>{
+        const i=d.querySelectorAll('input'); if(i.length==2){
+            const t1=parseTime(i[0].value), t2=parseTime(i[1].value); if(t2>t1) s+=(t2-t1);
+        }
+    });
+    let h=redondearATiempoExacto(s)/3600;
+    tr.querySelector('.c-n').innerText=decimalToTime(Math.min(h,8));
+    tr.querySelector('.c-25').innerText=decimalToTime(Math.min(Math.max(0,h-8),2));
+    tr.querySelector('.c-35').innerText=decimalToTime(Math.max(0,h-10));
+    sumM();
+}
 </script>
