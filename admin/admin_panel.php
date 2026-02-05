@@ -1,6 +1,6 @@
 <?php
-require_once 'auth_admin.php'; // Acceso solo para administradores
-require_once 'db_connect.php';
+require_once '../includes/auth_admin.php'; // Acceso solo para administradores
+require_once '../includes/db_connect.php';
 
 // 1. CONSULTA ROBUSTA: Trae TODOS los proveedores concatenados
 // Usamos LEFT JOIN para asegurar que si no hay detalle, al menos muestre la cabecera.
@@ -172,7 +172,7 @@ foreach($solicitudes as $s) {
 
     <div class="navbar">
         <div class="brand">🥑 GoldFruits <span>Admin</span></div>
-        <a href="logout.php" class="btn-logout">Salir</a>
+        <a href="../logout.php" class="btn-logout">Salir</a>
     </div>
 
     <div class="container">

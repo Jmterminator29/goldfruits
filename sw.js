@@ -3,12 +3,12 @@ const CACHE_NAME = 'goldfruits-v2';
 const urlsToCache = [
   './',
   './index.php',
-  './nuevo_acopio.php',
-  './mis_solicitudes.php',
+  './user/nuevo_acopio.php',
+  './user/mis_solicitudes.php',
   './manifest.json',
   './offline.html',
   './offline_queue.js',
-  './icon-192.png',
+  './assets/icon-192.png',
   './icon-512.png'
 ];
 

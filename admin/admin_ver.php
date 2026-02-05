@@ -1,6 +1,6 @@
 <?php
-require_once 'auth_admin.php';
-require_once 'db_connect.php';
+require_once '../includes/auth_admin.php';
+require_once '../includes/db_connect.php';
 
 $id = $_GET['id'];
 
@@ -213,7 +213,7 @@ $gastos_fijos = $d['precio_flete'] + $d['subtotal_cosecha'] + $d['subtotal_carga
             <div class="gallery-strip">
                 <?php foreach($mis_fotos as $f): ?>
                 <div class="img-card" onclick="openModal('<?php echo $f['foto_url']; ?>')">
-                    <img src="<?php echo $f['foto_url']; ?>">
+                    <img src="../<?php echo $f['foto_url']; ?>">
                     <div style="font-size:0.65rem; color:#666; margin-top:3px;">#<?php echo $f['numero_tanda']; ?> | <?php echo $f['peso']; ?>kg</div>
                 </div>
                 <?php endforeach; ?>

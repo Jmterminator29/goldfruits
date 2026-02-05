@@ -1,6 +1,6 @@
 <?php
 // ia_panel.php
-require_once 'auth.php'; //
+require_once '../includes/auth.php'; //
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -55,7 +55,7 @@ require_once 'auth.php'; //
         <a href="nuevo_acopio.php">➕ Nueva Operación</a>
         <a href="mis_solicitudes.php">📂 Mis Solicitudes</a>
         <a href="ia_panel.php" style="color:white; background:#222;">🤖 Consultor IA</a>
-        <a href="logout.php" style="color:#ff5252;">🚪 Salir</a>
+        <a href="../logout.php" style="color:#ff5252;">🚪 Salir</a>
     </div>
     <div id="overlay" onclick="closeNav()"></div>
 

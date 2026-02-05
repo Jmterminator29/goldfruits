@@ -6,7 +6,7 @@ header("Access-Control-Allow-Origin: *");
 session_start();
 
 if (file_exists('auth.php')) {
-    require_once 'auth.php';
+    require_once '../includes/auth.php';
 } else {
     if (!isset($_SESSION['user_id'])) {
         echo json_encode(['error' => 'Sesión expirada. Recarga la página.']);
@@ -14,7 +14,7 @@ if (file_exists('auth.php')) {
     }
 }
 
-require_once 'db_connect.php';
+require_once '../includes/db_connect.php';
 
 $input = json_decode(file_get_contents('php://input'), true);
 $pregunta_usuario = $input['pregunta'] ?? '';

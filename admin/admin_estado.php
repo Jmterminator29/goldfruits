@@ -1,6 +1,6 @@
 <?php
-require_once 'auth_admin.php';
-require_once 'db_connect.php';
+require_once '../includes/auth_admin.php';
+require_once '../includes/db_connect.php';
 
 if (isset($_GET['id']) && isset($_GET['accion'])) {
     $id = $_GET['id'];
