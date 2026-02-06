@@ -1,5 +1,5 @@
 <?php
-include_once $_SERVER['DOCUMENT_ROOT'] . '/config/db.php';
+include_once $_SERVER['DOCUMENT_ROOT'] . '/contabilidad/config/db.php';
 
 // 1. OBTENER DATOS DEL TRABAJADOR
 if (isset($_GET['id'])) {

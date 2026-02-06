@@ -1,7 +1,7 @@
 <?php
 // views/reporteria_produccion.php
 if (session_status() === PHP_SESSION_NONE) session_start();
-include_once $_SERVER['DOCUMENT_ROOT'] . '/config/db.php';
+include_once $_SERVER['DOCUMENT_ROOT'] . '/contabilidad/config/db.php';
 
 // --- GESTIÓN DE FECHAS ---
 $fecha_filtro = $_GET['fecha'] ?? date('Y-m-d');

@@ -1,11 +1,11 @@
 <?php
 // 1. Conexión Segura
 $root = $_SERVER['DOCUMENT_ROOT'];
-if (file_exists($root . '/config/db.php')) {
-    include_once $root . '/config/db.php';
+if (file_exists($root . '/contabilidad/config/db.php')) {
+    include_once $root . '/contabilidad/config/db.php';
 } else {
     // Fallback relativo
-    include_once '../config/db.php';
+    include_once '../contabilidad/config/db.php';
 }
 
 // 2. Recibir Datos del Formulario

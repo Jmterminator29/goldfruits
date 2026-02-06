@@ -1,5 +1,5 @@
 <?php
-include_once $_SERVER['DOCUMENT_ROOT'] . '/config/db.php';
+include_once $_SERVER['DOCUMENT_ROOT'] . '/contabilidad/config/db.php';
 
 $id  = $_POST['id_nomina'];
 $dias = $_POST['dias'];

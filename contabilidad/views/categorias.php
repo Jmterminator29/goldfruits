@@ -1,6 +1,6 @@
 <?php
 $root = $_SERVER['DOCUMENT_ROOT'];
-include_once $root . '/config/db.php'; 
+include_once $root . '/contabilidad/config/db.php'; 
 $categorias = mysqli_query($conexion, "SELECT * FROM categorias_pago ORDER BY nombre_categoria ASC");
 ?>
 

@@ -1,5 +1,5 @@
 <?php
-include_once '../config/db.php';
+include_once '../contabilidad/config/db.php';
 
 $id_cat = $_POST['id_cat'];
 $id_aseg = $_POST['id_aseg'];

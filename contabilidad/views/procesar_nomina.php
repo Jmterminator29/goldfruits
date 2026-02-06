@@ -2,7 +2,7 @@
 // views/procesar_nomina.php
 if (session_status() === PHP_SESSION_NONE) session_start();
 $root = $_SERVER['DOCUMENT_ROOT'];
-include_once $root . '/config/db.php';
+include_once $root . '/contabilidad/config/db.php';
 
 // 1. Filtros
 $mes = $_GET['mes'] ?? date('n');

@@ -5,10 +5,10 @@ ini_set('display_errors', 1);
 
 // Conexión a la base de datos
 $root = $_SERVER['DOCUMENT_ROOT'];
-if(file_exists($root.'/config/db.php')) {
-    include_once $root.'/config/db.php';
+if(file_exists($root.'/contabilidad/config/db.php')) {
+    include_once $root.'/contabilidad/config/db.php';
 } else {
-    include_once '../config/db.php'; 
+    include_once '../contabilidad/config/db.php'; 
 }
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {

@@ -1,6 +1,6 @@
 <?php
 $root = $_SERVER['DOCUMENT_ROOT'];
-include_once $root . '/config/db.php'; 
+include_once $root . '/contabilidad/config/db.php'; 
 
 // Consulta optimizada
 $sql = "SELECT t.*, a.nombre_area, p.nombre_puesto, c.nombre_categoria, b.nombre_banco

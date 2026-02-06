@@ -4,7 +4,7 @@ if (session_status() === PHP_SESSION_NONE) session_start();
 
 // --- 1. CONEXIÓN ---
 if (!isset($conexion)) {
-    $rutas = [$_SERVER['DOCUMENT_ROOT'] . '/config/db.php', __DIR__ . '/../config/db.php', 'config/db.php'];
+    $rutas = [$_SERVER['DOCUMENT_ROOT'] . '/config/db.php', __DIR__ . '/../contabilidad/config/db.php', 'contabilidad/config/db.php'];
     foreach ($rutas as $ruta) { if (file_exists($ruta)) { include_once $ruta; break; } }
 }
 if (!isset($conexion)) die('<div class="alert alert-danger">Error: Sin conexión a BD.</div>');

@@ -1,7 +1,7 @@
 <?php
 // 1. CONEXIÓN Y CARGA DE LISTAS
 if (session_status() === PHP_SESSION_NONE) session_start();
-include_once $_SERVER['DOCUMENT_ROOT'] . '/config/db.php';
+include_once $_SERVER['DOCUMENT_ROOT'] . '/contabilidad/config/db.php';
 
 // Consultas para llenar los selectores (Sin alias complicados para evitar errores)
 $res_a   = mysqli_query($conexion, "SELECT * FROM areas ORDER BY nombre_area ASC");

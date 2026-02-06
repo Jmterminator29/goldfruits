@@ -1,7 +1,18 @@
 <?php
-include_once $_SERVER['DOCUMENT_ROOT'] . '/config/db.php';
+// contabilidad/controllers/config_controller.php
 
-// ELIMINAR
+// 1. CONEXIÓN SEGURA (La solución al error visual)
+// Usamos __DIR__ para que no dependa de $_SERVER['DOCUMENT_ROOT']
+require_once __DIR__ . '/../config/db.php';
+
+// Verificar conexión antes de seguir
+if (!isset($conexion)) {
+    die("Error Crítico: No se pudo conectar a la base de datos.");
+}
+
+// ==========================================================================
+// ELIMINAR REGISTROS
+// ==========================================================================
 if (isset($_GET['eliminar']) && isset($_GET['tabla'])) {
     $id = intval($_GET['eliminar']);
     $tabla = mysqli_real_escape_string($conexion, $_GET['tabla']);
@@ -10,6 +21,7 @@ if (isset($_GET['eliminar']) && isset($_GET['tabla'])) {
     $redirect_view = 'config'; 
     if ($tabla == 'categorias_pago') $redirect_view = 'tarifas';
 
+    // Mapeo seguro de columnas ID
     $col_id = '';
     if ($tabla == 'areas') $col_id = 'id_area';
     if ($tabla == 'puestos') $col_id = 'id_puesto';
@@ -19,15 +31,22 @@ if (isset($_GET['eliminar']) && isset($_GET['tabla'])) {
     if ($tabla == 'categorias_pago') $col_id = 'id_categoria';
 
     if ($col_id != '') {
-        mysqli_query($conexion, "DELETE FROM $tabla WHERE $col_id = $id");
+        $sql = "DELETE FROM $tabla WHERE $col_id = $id";
+        if (!mysqli_query($conexion, $sql)) {
+            die("Error al eliminar: " . mysqli_error($conexion));
+        }
     }
+    
+    // Redirección Limpia
     header("Location: ../index.php?view=$redirect_view&status=deleted");
     exit();
 }
 
-// CREAR
+// ==========================================================================
+// CREAR REGISTROS
+// ==========================================================================
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $tabla = $_POST['tabla'];
+    $tabla = mysqli_real_escape_string($conexion, $_POST['tabla']);
     $nombre = mysqli_real_escape_string($conexion, $_POST['nombre']);
     
     // Lógica de redirección inteligente
@@ -36,26 +55,35 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
     $sql = "";
 
-    // 1. Lógica para Categorías de Pago (Sueldos)
+    // 1. Categorías de Pago (Sueldos)
     if ($tabla == 'categorias_pago') {
         $monto = floatval($_POST['monto']);
         $sql = "INSERT INTO categorias_pago (nombre_categoria, monto_categoria) VALUES ('$nombre', '$monto')";
     } 
-    // 2. Lógica específica para ASEGURADORAS (Porcentaje)
+    // 2. Aseguradoras (Con porcentaje)
     else if ($tabla == 'aseguradoras') {
-        $porcentaje = floatval($_POST['porcentaje']); // Recibimos el porcentaje del formulario
+        $porcentaje = floatval($_POST['porcentaje']);
         $sql = "INSERT INTO aseguradoras (nombre_aseguradora, porcentaje_descuento) VALUES ('$nombre', '$porcentaje')";
     } 
-    // 3. Tablas simples de un solo campo
+    // 3. Tablas simples
     else {
-        if ($tabla == 'areas') $sql = "INSERT INTO areas (nombre_area) VALUES ('$nombre')";
-        if ($tabla == 'puestos') $sql = "INSERT INTO puestos (nombre_puesto) VALUES ('$nombre')";
-        if ($tabla == 'bancos') $sql = "INSERT INTO bancos (nombre_banco) VALUES ('$nombre')";
-        if ($tabla == 'tipos_documento') $sql = "INSERT INTO tipos_documento (nombre_tipo) VALUES ('$nombre')";
+        // Lista blanca de tablas permitidas por seguridad
+        $tablas_validas = ['areas', 'puestos', 'bancos', 'tipos_documento'];
+        
+        if (in_array($tabla, $tablas_validas)) {
+            if ($tabla == 'areas') $sql = "INSERT INTO areas (nombre_area) VALUES ('$nombre')";
+            if ($tabla == 'puestos') $sql = "INSERT INTO puestos (nombre_puesto) VALUES ('$nombre')";
+            if ($tabla == 'bancos') $sql = "INSERT INTO bancos (nombre_banco) VALUES ('$nombre')";
+            if ($tabla == 'tipos_documento') $sql = "INSERT INTO tipos_documento (nombre_tipo) VALUES ('$nombre')";
+        } else {
+            die("Error: Tabla no válida o no permitida.");
+        }
     }
 
     if ($sql != "" && mysqli_query($conexion, $sql)) {
+        // Redirección exitosa
         header("Location: ../index.php?view=$redirect_view&status=success");
+        exit(); // IMPORTANTE: Detener el script después de redirigir
     } else {
         echo "Error SQL: " . mysqli_error($conexion);
     }

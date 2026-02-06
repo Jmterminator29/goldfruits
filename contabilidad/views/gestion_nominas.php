@@ -1,7 +1,7 @@
 <?php
 // views/gestion_nominas.php
 if (session_status() === PHP_SESSION_NONE) session_start();
-include_once $_SERVER['DOCUMENT_ROOT'] . '/config/db.php';
+include_once $_SERVER['DOCUMENT_ROOT'] . '/contabilidad/config/db.php';
 
 $estado_filtro = $_GET['estado'] ?? 'BORRADOR';
 $mes_filtro = $_GET['mes'] ?? date('n');

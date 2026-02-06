@@ -6,7 +6,7 @@ if (session_status() === PHP_SESSION_NONE) session_start();
 date_default_timezone_set('America/Lima');
 
 $root = $_SERVER['DOCUMENT_ROOT'];
-include_once $root . '/config/db.php'; 
+include_once $root . '/contabilidad/config/db.php'; 
 
 // 2. CAPTURAR VISTA ACTUAL
 $view = $_GET['view'] ?? 'inicio';

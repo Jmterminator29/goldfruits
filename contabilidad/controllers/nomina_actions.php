@@ -1,6 +1,6 @@
 <?php
 // Programa/controllers/nomina_actions.php
-include_once '../config/db.php';
+include_once '../contabilidad/config/db.php';
 
 // 1. OBTENER RMV
 $q_rmv = mysqli_query($conexion, "SELECT valor FROM configuracion_global WHERE clave='RMV'");

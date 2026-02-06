@@ -1,5 +1,5 @@
 <?php
-include_once $_SERVER['DOCUMENT_ROOT'] . '/config/db.php';
+include_once $_SERVER['DOCUMENT_ROOT'] . '/contabilidad/config/db.php';
 
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $id = intval($_POST['id_trabajador']);
