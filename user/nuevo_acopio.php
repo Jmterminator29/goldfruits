@@ -1,106 +1,230 @@
-<?php require_once '../includes/auth.php'; ?>
+<?php 
+require_once '../includes/auth.php'; 
+// Asegurar UTF-8
+header('Content-Type: text/html; charset=utf-8');
+?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#1b5e20"> 
-    <title>Nuevo Acopio</title>
+    <title>Nuevo Acopio | GoldFruits</title>
 
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    
     <script src="offline_queue.js"></script>
-
     <script>
       if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw.js');
       }
     </script>
+
     <style>
-        /* --- ESTILOS --- */
-        :root { --primary: #1b5e20; --gold: #fbc02d; --bg: #f5f5f5; --text: #212121; --danger: #d32f2f; }
-        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg); margin: 0; padding-bottom: 80px; color: var(--text); overflow-x: hidden; transition: margin-left .3s; }
-        
-        .app-bar { background: var(--primary); color: white; padding: 15px 20px; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 5px rgba(0,0,0,0.2); display: flex; justify-content: space-between; align-items: center; }
-        .menu-btn { font-size: 1.5rem; cursor: pointer; }
-        
-        .sidebar { height: 100%; width: 0; position: fixed; z-index: 200; top: 0; left: 0; background-color: #111; overflow-x: hidden; transition: 0.3s; padding-top: 60px; }
-        .sidebar a { padding: 15px 20px; text-decoration: none; font-size: 1.1rem; color: #818181; display: block; border-bottom: 1px solid #333; }
-        .sidebar .closebtn { position: absolute; top: 0; right: 25px; font-size: 36px; border: none; }
-        #overlay { position: fixed; display: none; width: 100%; height: 100%; top: 0; left: 0; background: rgba(0,0,0,0.5); z-index: 150; }
+        /* --- ESTILOS VISUALES PREMIUM --- */
+        :root {
+            --gf-primary: #1b5e20;
+            --gf-dark: #0f3d14;
+            --gf-gold: #fbc02d;
+            --gf-glass: rgba(255, 255, 255, 0.95);
+            --gf-glass-border: rgba(255, 255, 255, 0.5);
+        }
 
-        .container { padding: 15px; max-width: 100%; }
-        .card { background: white; border-radius: 12px; margin-bottom: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; }
-        .card.active { border: 1px solid var(--gold); }
-        .card-header { padding: 15px; display: flex; justify-content: space-between; font-weight: 600; cursor: pointer; background: white; }
-        .card-body { display: none; padding: 15px; border-top: 1px solid #eee; }
-        .card.active .card-body { display: block; }
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--gf-dark);
+            /* Fondo corporativo sutil */
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(251, 192, 45, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(27, 94, 32, 0.2) 0px, transparent 50%),
+                url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+            color: #333;
+            padding-bottom: 100px; /* Espacio para el botón flotante */
+            min-height: 100vh;
+        }
 
-        label { display: block; margin-top: 10px; font-size: 0.8rem; color: #666; font-weight: 600; }
-        .input-box { background: #f9f9f9; border: 1px solid #e0e0e0; border-radius: 8px; padding: 10px; display: flex; align-items: center; }
-        .input-box.money { border-color: var(--gold); background: #fffde7; }
-        .input-box.readonly { background: #e0e0e0; color: #555; pointer-events: none; }
-        input, select { border: none; background: transparent; width: 100%; font-size: 1rem; outline: none; }
+        /* NAVBAR CON EFECTO CRISTAL */
+        .app-bar {
+            background: rgba(27, 94, 32, 0.9);
+            backdrop-filter: blur(10px);
+            color: white;
+            padding: 15px 20px;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+        }
+
+        .menu-btn { font-size: 1.6rem; cursor: pointer; color: var(--gf-gold); }
+        .page-title { font-weight: 700; font-size: 1.1rem; letter-spacing: 0.5px; margin: 0; }
+
+        /* SIDEBAR PREMIUM */
+        .sidebar {
+            height: 100%; width: 0; position: fixed; z-index: 2000; top: 0; left: 0;
+            background: linear-gradient(180deg, #0f3d14 0%, #1b5e20 100%);
+            overflow-x: hidden; transition: 0.3s; padding-top: 60px;
+            box-shadow: 5px 0 25px rgba(0,0,0,0.5);
+        }
+        .sidebar a {
+            padding: 15px 25px; text-decoration: none; font-size: 1rem; color: rgba(255,255,255,0.8);
+            display: block; transition: 0.2s; border-bottom: 1px solid rgba(255,255,255,0.05);
+            font-weight: 500;
+        }
+        .sidebar a:hover { background: rgba(255,255,255,0.1); color: white; padding-left: 30px; }
+        .sidebar .closebtn { position: absolute; top: 10px; right: 20px; font-size: 36px; color: var(--gf-gold); }
+        #overlay { position: fixed; display: none; width: 100%; height: 100%; top: 0; left: 0; background: rgba(0,0,0,0.7); z-index: 1500; backdrop-filter: blur(3px); }
+
+        /* TARJETAS GLASSMORPHISM */
+        .gf-card {
+            background: var(--gf-glass);
+            border: 1px solid var(--gf-glass-border);
+            border-radius: 16px;
+            margin-bottom: 15px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
         
-        .origen-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
-        .btn-plus { background: var(--primary); color: white; border: none; width: 40px; height: 40px; border-radius: 8px; font-size: 1.2rem; cursor: pointer; }
-        .btn-trash { background: #ffebee; color: var(--danger); border: 1px solid var(--danger); width: 40px; height: 40px; border-radius: 8px; cursor: pointer; }
+        .gf-card.active {
+            border: 2px solid var(--gf-gold);
+            transform: scale(1.01);
+            box-shadow: 0 10px 40px rgba(251, 192, 45, 0.15);
+        }
 
-        .pesada-item { display: flex; justify-content: space-between; padding: 8px; border-bottom: 1px solid #eee; align-items: center; }
-        .pesada-thumb { width: 40px; height: 40px; object-fit: cover; border-radius: 4px; margin-right: 10px; }
-        .add-area { background: #e3f2fd; padding: 15px; border-radius: 8px; }
-        .mini-camera-btn { background: white; border: 1px solid #ccc; width: 100%; padding: 10px; border-radius: 8px; margin-top: 10px; display: flex; justify-content: center; gap: 10px; cursor: pointer; }
-        .mini-camera-btn.has-photo { background: #c8e6c9; border-color: #2e7d32; color: #1b5e20; }
-        .btn-add { width: 100%; background: var(--primary); color: white; padding: 12px; border: none; border-radius: 8px; margin-top: 10px; font-weight: bold; }
-
-        .personal-block { border: 1px solid #eee; padding: 10px; border-radius: 8px; margin-bottom: 10px; background: #fafafa; }
-        .subtotal-val { font-weight: 800; color: var(--primary); text-align: right; display: block; margin-top: 5px; }
-        .btn-main { width: 100%; padding: 18px; background: var(--primary); color: white; border: none; border-radius: 12px; font-size: 1.1rem; font-weight: 700; margin-top: 20px; }
-        .row { display: flex; gap: 10px; } .col { flex: 1; }
-        input[type="file"] { display: none; }
-        .gps-dot { height: 12px; width: 12px; border-radius: 50%; background: #ccc; display: inline-block; }
-        .gps-active { background: #00e676; box-shadow: 0 0 5px #00e676; }
+        .gf-card-header {
+            padding: 18px 20px;
+            font-weight: 700;
+            cursor: pointer;
+            background: rgba(255,255,255,0.5);
+            color: var(--gf-primary);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
         
-        .select-custom { width: 100%; padding: 10px; border-radius: 8px; border: 2px solid #1565c0; background: white; color: #1565c0; font-weight: bold; margin-bottom: 10px; }
-        
-        /* ETIQUETAS VISUALES */
-        .badge-cat { font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; color: white; font-weight: bold; margin-left: 5px; }
-        .cat1 { background: #2e7d32; } 
-        .cat2 { background: #fbc02d; color: black; } 
-        .rastrojo { background: #d32f2f; }
+        .gf-card.active .gf-card-header {
+            background: linear-gradient(90deg, rgba(251, 192, 45, 0.1) 0%, transparent 100%);
+            color: #000;
+        }
 
-        /* Estilos Liquidación Detallada */
-        .liqui-block { border: 1px solid #ccc; border-radius: 8px; margin-bottom: 15px; overflow: hidden; background: #fff; }
-        .liqui-header { background: #e3f2fd; padding: 10px; font-weight: bold; color: #1565c0; font-size: 0.9rem; display: flex; justify-content: space-between;}
-        .liqui-row { display: flex; align-items: center; border-bottom: 1px solid #eee; padding: 8px; font-size: 0.85rem; }
-        .mini-input { width: 100%; border-bottom: 1px solid var(--gold); text-align: right; font-weight: bold; padding: 4px; border-top: none; border-left: none; border-right: none; background: transparent; }
+        .gf-card-body { display: none; padding: 20px; }
+        .gf-card.active .gf-card-body { display: block; animation: slideDown 0.3s ease; }
+
+        @keyframes slideDown { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* INPUTS MODERNOS */
+        .gf-input-group {
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 10px;
+            padding: 8px 12px;
+            margin-bottom: 10px;
+            transition: 0.3s;
+            display: flex; align-items: center;
+        }
+        .gf-input-group:focus-within {
+            border-color: var(--gf-primary);
+            box-shadow: 0 0 0 3px rgba(27, 94, 32, 0.1);
+        }
+        .gf-input-group.money { background: #fffde7; border-color: var(--gf-gold); }
+        
+        input, select { 
+            border: none; background: transparent; width: 100%; 
+            font-size: 1rem; outline: none; color: #333; font-weight: 500;
+        }
+        label { color: #666; font-size: 0.8rem; font-weight: 700; margin-bottom: 5px; display: block; text-transform: uppercase; letter-spacing: 0.5px; }
+
+        /* BOTONES */
+        .btn-plus { background: var(--gf-primary); color: white; border: none; width: 45px; height: 45px; border-radius: 10px; font-size: 1.4rem; transition: 0.2s; }
+        .btn-trash { background: #ffebee; color: #d32f2f; border: 1px solid #ffcdd2; width: 40px; height: 40px; border-radius: 10px; }
+        
+        .btn-camera {
+            border: 2px dashed #ccc; background: #f8f9fa; padding: 15px;
+            border-radius: 12px; text-align: center; width: 100%;
+            cursor: pointer; color: #666; font-weight: 600;
+            margin-top: 10px; transition: 0.3s;
+        }
+        .btn-camera.has-photo { border-color: var(--gf-primary); background: #e8f5e9; color: var(--gf-primary); }
+
+        .btn-add-tanda {
+            width: 100%; background: var(--gf-primary); color: white;
+            padding: 12px; border: none; border-radius: 10px;
+            font-weight: 700; margin-top: 15px;
+            box-shadow: 0 4px 10px rgba(27, 94, 32, 0.3);
+        }
+
+        .btn-save-main {
+            width: 100%; padding: 18px;
+            background: linear-gradient(135deg, var(--gf-gold) 0%, #f9a825 100%);
+            color: #0f3d14; border: none; border-radius: 14px;
+            font-size: 1.2rem; font-weight: 800;
+            box-shadow: 0 10px 25px rgba(249, 168, 37, 0.4);
+            margin-top: 20px; transition: 0.3s;
+        }
+        .btn-save-main:active { transform: scale(0.98); }
+
+        /* ESTILOS DE ELEMENTOS (Categorías, Items, Tabla) */
+        .badge-cat { padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; color: white; font-weight: 700; }
+        .cat1 { background: #2e7d32; }
+        .cat2 { background: #fbc02d; color: black; }
+        .rastrojo { background: #c62828; }
+
+        .gps-dot { width: 12px; height: 12px; background: #999; border-radius: 50%; box-shadow: inset 0 0 2px rgba(0,0,0,0.5); }
+        .gps-active { background: #00e676; box-shadow: 0 0 8px #00e676; }
+
+        .origen-item { background: #f1f8e9; border: 1px solid #c8e6c9; border-radius: 10px; padding: 10px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; }
+        .pesada-item { display: flex; align-items: center; border-bottom: 1px solid #eee; padding: 10px 0; }
+        .pesada-thumb { width: 45px; height: 45px; border-radius: 8px; object-fit: cover; margin-right: 12px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        
+        .liqui-card { border: 1px solid #e0e0e0; border-radius: 10px; margin-bottom: 10px; overflow: hidden; background: white; }
+        .liqui-head { background: #e3f2fd; padding: 8px 12px; font-weight: 700; font-size: 0.9rem; color: #1565c0; display:flex; justify-content:space-between; }
+        .liqui-row { display: flex; align-items: center; padding: 8px 12px; border-bottom: 1px solid #f5f5f5; font-size: 0.9rem; }
+        .mini-input { text-align: right; border-bottom: 2px solid var(--gf-gold); padding: 2px; font-weight: 700; width: 100%; }
+
     </style>
 </head>
 <body>
 
     <div id="mySidebar" class="sidebar">
         <a href="javascript:void(0)" class="closebtn" onclick="closeNav()">×</a>
-        <div style="text-align:center; color:var(--gold); font-weight:bold; margin-bottom:20px;">HOLA, <?php echo strtoupper($_SESSION['user_nombre']); ?></div>
         
-        <a href="nuevo_acopio.php" style="color:white; background:#222;">➕ Nueva Operación</a>
-        <a href="mis_solicitudes.php">📂 Mis Solicitudes</a>
-        <a href="ia_panel.php" style="color:var(--gold); border-left: 4px solid var(--gold);">🤖 Consultor IA</a>
-        <a href="../logout.php" style="color:#ff5252;">🚪 Cerrar Sesión</a>
+        <div style="text-align:center; padding: 30px 0 20px;">
+             <img src="https://i.ibb.co/KzVLFpSV/Gemini-Generated-Image-45ambn45ambn45am-removebg-preview-2.png" alt="GoldFruits" style="width: 120px; height: auto; display: block; margin: 0 auto; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.3));">
+             
+             <div style="color:var(--gf-gold); font-weight:bold; margin-top:15px; letter-spacing:1px;">
+                <?php echo strtoupper($_SESSION['user_nombre']); ?>
+             </div>
+        </div>
+        
+        <a href="nuevo_acopio.php" style="background: rgba(255,255,255,0.1); color: white; border-left: 4px solid var(--gf-gold);">
+            <i class="bi bi-plus-circle me-2"></i>Nueva Operación
+        </a>
+        <a href="mis_solicitudes.php"><i class="bi bi-folder2-open me-2"></i>Mis Solicitudes</a>
+        <a href="ia_panel.php" style="color:var(--gf-gold);"><i class="bi bi-robot me-2"></i>Consultor IA</a>
+        <a href="../logout.php" style="color:#ff8a80; margin-top:20px;"><i class="bi bi-box-arrow-left me-2"></i>Cerrar Sesión</a>
     </div>
+    
     <div id="overlay" onclick="closeNav()"></div>
 
     <div class="app-bar">
-        <span class="menu-btn" onclick="openNav()">☰</span>
-        <h1 style="margin:0; font-size:1.1rem;">Nuevo Acopio</h1>
+        <span class="menu-btn" onclick="openNav()"><i class="bi bi-list"></i></span>
+        <h1 class="page-title">Nuevo Acopio</h1>
         <div id="gpsStatus" class="gps-dot"></div>
     </div>
 
-    <div id="netBanner" style="display:none; position:sticky; top:52px; z-index:120; background:#ffebee; color:#b71c1c; padding:10px 15px; font-weight:700; border-bottom:1px solid #ffcdd2;">
-        📴 Sin internet: se guardará offline.
-        <span id="pendingCount" style="float:right;"></span>
-        <div style="clear:both"></div>
+    <div id="netBanner" style="display:none; position:sticky; top:65px; z-index:900; background:#ffcdd2; color:#b71c1c; padding:10px 20px; font-weight:700; border-bottom:1px solid #e57373; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+        <i class="bi bi-wifi-off me-2"></i>Sin conexión: Se guardará offline.
+        <span id="pendingCount" style="float:right; font-size:0.9rem; background:white; padding:2px 8px; border-radius:10px;"></span>
     </div>
 
-    <div class="container">
+    <div class="container mt-3">
         <form id="formAcopio">
             <input type="hidden" id="codigo_unico" name="codigo_unico">
             <input type="hidden" id="latitud" name="latitud">
@@ -109,130 +233,223 @@
             <input type="hidden" id="detalle_pesadas_json" name="detalle_pesadas_json">
             <input type="hidden" id="total_pagar_texto" name="total_pagar_texto">
 
-            <div class="card active" id="c1">
-                <div class="card-header" onclick="tgl('c1')">1. Orígenes (Proveedores) ▼</div>
-                <div class="card-body">
+            <div class="gf-card active" id="c1">
+                <div class="gf-card-header" onclick="tgl('c1')">
+                    <span><i class="bi bi-geo-alt-fill me-2"></i>1. Orígenes (Proveedores)</span>
+                    <i class="bi bi-chevron-down"></i>
+                </div>
+                <div class="gf-card-body">
                     <div id="lista_origenes"></div>
-                    <div class="origen-row" style="margin-top:10px; border-top:1px dashed #ccc; padding-top:10px; flex-wrap:wrap;">
-                        <div style="flex:1; min-width: 150px;">
-                            <input type="text" id="tmp_prov" class="input-box" placeholder="Nombre Agricultor" style="margin-bottom:5px;">
-                            <input type="text" id="tmp_campo" class="input-box" placeholder="Campo / Sector">
+                    
+                    <div style="background: rgba(0,0,0,0.02); padding: 15px; border-radius: 12px; margin-top: 10px;">
+                        <div class="row g-2">
+                            <div class="col-8">
+                                <div class="gf-input-group">
+                                    <input type="text" id="tmp_prov" placeholder="Nombre Agricultor">
+                                </div>
+                                <div class="gf-input-group mb-0">
+                                    <input type="text" id="tmp_campo" placeholder="Campo / Sector">
+                                </div>
+                            </div>
+                            <div class="col-4">
+                                <label style="font-size:0.7rem;">Tara Jaba</label>
+                                <div class="gf-input-group mb-2">
+                                    <select id="tmp_tara" style="font-weight:bold; color:var(--gf-primary);">
+                                        <option value="1.6">1.6 kg</option>
+                                        <option value="1.7">1.7 kg</option>
+                                        <option value="1.8">1.8 kg</option>
+                                    </select>
+                                </div>
+                                <button type="button" class="btn-plus w-100" onclick="addOrigen()"><i class="bi bi-plus-lg"></i></button>
+                            </div>
                         </div>
-                        <div style="width: 100px;">
-                            <label style="margin-top:0; font-size:0.7rem; color:var(--primary);">Tara Jaba</label>
-                            <select id="tmp_tara" class="input-box" style="font-weight:bold; color:var(--primary);">
-                                <option value="1.6">1.6 kg</option>
-                                <option value="1.7">1.7 kg</option>
-                                <option value="1.8">1.8 kg</option>
+                    </div>
+
+                    <label class="mt-3">Cuenta Bancaria (General)</label>
+                    <div class="gf-input-group">
+                        <i class="bi bi-bank me-2 text-muted"></i>
+                        <input type="tel" name="cuenta" placeholder="Para depósito general">
+                    </div>
+                </div>
+            </div>
+
+            <div class="gf-card" id="c2">
+                <div class="gf-card-header" onclick="tgl('c2')">
+                    <span><i class="bi bi-truck me-2"></i>2. Transporte</span>
+                    <i class="bi bi-chevron-down"></i>
+                </div>
+                <div class="gf-card-body">
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <label>Chofer</label>
+                            <div class="gf-input-group">
+                                <input type="text" name="conductor_nombre">
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <label>Placa</label>
+                            <div class="gf-input-group">
+                                <input type="text" name="vehiculo_placa" style="text-transform:uppercase;">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row g-2 mt-1">
+                        <div class="col-6">
+                            <label>Flete (S/)</label>
+                            <div class="gf-input-group money">
+                                <input type="number" name="flete" placeholder="0.00">
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <label class="text-danger">Adelanto</label>
+                            <div class="gf-input-group" style="background:#ffebee; border-color:#ef5350;">
+                                <input type="number" name="adelanto_flete" placeholder="0.00">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="gf-card" id="c3">
+                <div class="gf-card-header" onclick="tgl('c3')">
+                    <span><i class="bi bi-basket-fill me-2"></i>3. Pesaje</span>
+                    <i class="bi bi-chevron-down"></i>
+                </div>
+                <div class="gf-card-body">
+                    <div style="background: #e3f2fd; padding: 15px; border-radius: 12px; border: 1px dashed #90caf9;">
+                        <label style="color:#1565c0;">¿A quién pertenece?</label>
+                        <div class="gf-input-group mb-1" style="border: 2px solid #1565c0;">
+                            <select id="select_origen_pesada" onchange="mostrarTaraInfo()">
+                                <option value="">-- Selecciona Origen --</option>
                             </select>
                         </div>
-                        <button type="button" class="btn-plus" onclick="addOrigen()">+</button>
-                    </div>
-                    <label>Cuenta Bancaria (General)</label>
-                    <div class="input-box"><input type="tel" name="cuenta" placeholder="Para depósito general"></div>
-                </div>
-            </div>
+                        <div id="info_tara_actual" style="text-align:right; font-size:0.75rem; color:#d32f2f; font-weight:700; height:18px;"></div>
 
-            <div class="card" id="c2">
-                <div class="card-header" onclick="tgl('c2')">2. Transporte ▼</div>
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col"><label>Chofer</label><div class="input-box"><input type="text" name="conductor_nombre"></div></div>
-                        <div class="col"><label>Placa</label><div class="input-box"><input type="text" name="vehiculo_placa" style="text-transform:uppercase;"></div></div>
-                    </div>
-                    <div class="row">
-                        <div class="col"><label>Flete (S/)</label><div class="input-box money"><input type="number" name="flete" placeholder="0.00"></div></div>
-                        <div class="col"><label style="color:#d32f2f;">Adelanto</label><div class="input-box money" style="border-color:#d32f2f; background:#ffebee;"><input type="number" name="adelanto_flete" placeholder="0.00"></div></div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="card" id="c3">
-                <div class="card-header" onclick="tgl('c3')">3. Pesaje ▼</div>
-                <div class="card-body">
-                    <div class="add-area">
-                        <label style="margin-top:0; color:#1565c0;">¿A quién pertenece?</label>
-                        <select id="select_origen_pesada" class="select-custom" onchange="mostrarTaraInfo()">
-                            <option value="">-- Selecciona Origen --</option>
-                        </select>
-                        
-                        <div id="info_tara_actual" style="text-align:right; font-size:0.8rem; color:#d32f2f; font-weight:bold; margin-bottom:5px; height:15px;"></div>
-                        
-                        <label style="margin-top:5px; color:#2e7d32;">Calidad / Categoría</label>
-                        <select id="select_categoria" class="select-custom" style="border-color:#2e7d32; color:#2e7d32;">
-                            <option value="cat1">🏆 Cat 1 - Grande</option>
-                            <option value="cat2">🔸 Cat 1 - Chico</option>
-                            <option value="rastrojo">❌ Rastrojo</option>
-                        </select>
-
-                        <div class="row" style="margin-top:10px;">
-                            <div class="col"><input type="number" id="tj" class="input-box" style="background:white" placeholder="Jabas"></div>
-                            <div class="col"><input type="number" id="tp" class="input-box" style="background:white" placeholder="Peso BALANZA"></div>
+                        <label style="color:#2e7d32;">Calidad / Categoría</label>
+                        <div class="gf-input-group" style="border: 2px solid #2e7d32;">
+                            <select id="select_categoria">
+                                <option value="cat1">🏆 Cat 1 - Grande</option>
+                                <option value="cat2">🔸 Cat 1 - Chico</option>
+                                <option value="rastrojo">❌ Rastrojo</option>
+                            </select>
                         </div>
-                        <label class="mini-camera-btn" id="btn_temp_foto"><span>📷 Tomar Foto</span><input type="file" id="tf" accept="image/*" capture="environment" onchange="checkF()"></label>
-                        <button type="button" class="btn-add" onclick="addP()">AGREGAR TANDA</button>
+
+                        <div class="row g-2 mt-2">
+                            <div class="col-6">
+                                <div class="gf-input-group">
+                                    <input type="number" id="tj" placeholder="Jabas">
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="gf-input-group">
+                                    <input type="number" id="tp" placeholder="Peso KG">
+                                </div>
+                            </div>
+                        </div>
+
+                        <label class="btn-camera" id="btn_temp_foto">
+                            <i class="bi bi-camera-fill me-2"></i>Tomar Foto Evidencia
+                            <input type="file" id="tf" accept="image/*" capture="environment" onchange="checkF()" style="display:none;">
+                        </label>
+
+                        <button type="button" class="btn-add-tanda" onclick="addP()">AGREGAR TANDA</button>
                     </div>
-                    
-                    <div id="listP" class="pesadas-container"></div>
-                    
-                    <div class="row" style="margin-top:15px; font-size:0.8rem; color:#666;">
-                        <div class="col">Jabas Totales: <b id="gtj">0</b></div>
-                        <div class="col">Peso NETO: <b id="gtp" style="color:var(--primary); font-size:1.1rem;">0.00</b></div>
+
+                    <div id="listP" class="mt-3"></div>
+
+                    <div class="row mt-3 pt-3 border-top text-muted" style="font-size:0.9rem;">
+                        <div class="col-6">Jabas: <b id="gtj">0</b></div>
+                        <div class="col-6 text-end">Neto: <b id="gtp" style="color:var(--gf-primary); font-size:1.2rem;">0.00</b></div>
                     </div>
                 </div>
             </div>
 
-            <div class="card" id="c4">
-                <div class="card-header" onclick="tgl('c4')">4. Liquidación (Detallada) ▼</div>
-                <div class="card-body" style="background:#f9f9f9;">
-                    <p style="font-size:0.8rem; color:#666; margin-top:0;">Establece el precio (Se paga por Peso NETO):</p>
+            <div class="gf-card" id="c4">
+                <div class="gf-card-header" onclick="tgl('c4')">
+                    <span><i class="bi bi-calculator-fill me-2"></i>4. Liquidación</span>
+                    <i class="bi bi-chevron-down"></i>
+                </div>
+                <div class="gf-card-body" style="background:#fafafa;">
+                    <p class="small text-muted mb-2">Establece precios (Se paga por Peso NETO):</p>
                     
                     <div id="liqui_container"></div>
 
-                    <div style="background:#e8f5e9; padding:15px; border-radius:8px; text-align:right; margin-top:15px; border: 1px solid #c8e6c9;">
-                        <small>TOTAL GENERAL A PAGAR</small><br>
-                        <span id="txt_gran_total" style="font-size:1.6rem; font-weight:900; color:#1b5e20;">S/ 0.00</span>
+                    <div style="background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%); padding: 20px; border-radius: 12px; text-align: center; margin-top: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
+                        <small style="text-transform:uppercase; letter-spacing:1px; font-weight:700; color:#2e7d32;">Total General a Pagar</small><br>
+                        <span id="txt_gran_total" style="font-size:2rem; font-weight:900; color:#1b5e20;">S/ 0.00</span>
                     </div>
                 </div>
             </div>
 
-            <div class="card" id="c5">
-                <div class="card-header" onclick="tgl('c5')">5. Personal ▼</div>
-                <div class="card-body">
-                    <div class="personal-block"><strong>🚜 Cosecha</strong>
-                        <div class="row"><div class="col"><input type="number" id="cp" name="cosecha_personas" class="input-box" placeholder="Pers" oninput="cP()"></div><div class="col"><input type="number" id="cd" name="cosecha_dias" class="input-box" value="1" oninput="cP()"></div></div>
-                        <div class="input-box money" style="margin-top:5px;"><input type="number" id="cpr" name="cosecha_precio" placeholder="Precio Día" oninput="cP()"></div>
-                        <span class="subtotal-val" id="txt_sc">S/ 0.00</span><input type="hidden" id="sc" name="sub_cosecha" value="0">
+            <div class="gf-card" id="c5">
+                <div class="gf-card-header" onclick="tgl('c5')">
+                    <span><i class="bi bi-people-fill me-2"></i>5. Personal</span>
+                    <i class="bi bi-chevron-down"></i>
+                </div>
+                <div class="gf-card-body">
+                    <div class="p-3 mb-3 bg-light rounded border">
+                        <label>🚜 Cosecha</label>
+                        <div class="row g-2">
+                            <div class="col-4"><div class="gf-input-group mb-0"><input type="number" id="cp" name="cosecha_personas" placeholder="Pers" oninput="cP()"></div></div>
+                            <div class="col-4"><div class="gf-input-group mb-0"><input type="number" id="cd" name="cosecha_dias" value="1" oninput="cP()"></div></div>
+                            <div class="col-4"><div class="gf-input-group mb-0 money"><input type="number" id="cpr" name="cosecha_precio" placeholder="S/ Día" oninput="cP()"></div></div>
+                        </div>
+                        <div class="text-end mt-1"><b id="txt_sc" style="color:var(--gf-primary);">S/ 0.00</b><input type="hidden" id="sc" name="sub_cosecha" value="0"></div>
                     </div>
-                    <div class="personal-block"><strong>📦 Cargadores</strong>
-                        <div class="row"><div class="col"><input type="number" id="cap" name="cargadores_personas" class="input-box" placeholder="Pers" oninput="cP()"></div><div class="col"><input type="number" id="cad" name="cargadores_dias" class="input-box" value="1" oninput="cP()"></div></div>
-                        <div class="input-box money" style="margin-top:5px;"><input type="number" id="capr" name="cargadores_precio" placeholder="Precio Día" oninput="cP()"></div>
-                        <span class="subtotal-val" id="txt_sca">S/ 0.00</span><input type="hidden" id="sca" name="sub_cargadores" value="0">
+
+                    <div class="p-3 mb-3 bg-light rounded border">
+                        <label>📦 Cargadores</label>
+                        <div class="row g-2">
+                            <div class="col-4"><div class="gf-input-group mb-0"><input type="number" id="cap" name="cargadores_personas" placeholder="Pers" oninput="cP()"></div></div>
+                            <div class="col-4"><div class="gf-input-group mb-0"><input type="number" id="cad" name="cargadores_dias" value="1" oninput="cP()"></div></div>
+                            <div class="col-4"><div class="gf-input-group mb-0 money"><input type="number" id="capr" name="cargadores_precio" placeholder="S/ Día" oninput="cP()"></div></div>
+                        </div>
+                        <div class="text-end mt-1"><b id="txt_sca" style="color:var(--gf-primary);">S/ 0.00</b><input type="hidden" id="sca" name="sub_cargadores" value="0"></div>
                     </div>
-                    <div class="personal-block"><strong>🔍 Inspectores</strong>
-                        <div class="row"><div class="col"><input type="number" id="ip" name="inspectores_personas" class="input-box" placeholder="Pers" oninput="cP()"></div><div class="col"><input type="number" id="id" name="inspectores_dias" class="input-box" value="1" oninput="cP()"></div></div>
-                        <div class="input-box money" style="margin-top:5px;"><input type="number" id="ipr" name="inspectores_precio" placeholder="Precio Día" oninput="cP()"></div>
-                        <span class="subtotal-val" id="txt_si">S/ 0.00</span><input type="hidden" id="si" name="sub_inspectores" value="0">
+
+                    <div class="p-3 bg-light rounded border">
+                        <label>🔍 Inspectores</label>
+                        <div class="row g-2">
+                            <div class="col-4"><div class="gf-input-group mb-0"><input type="number" id="ip" name="inspectores_personas" placeholder="Pers" oninput="cP()"></div></div>
+                            <div class="col-4"><div class="gf-input-group mb-0"><input type="number" id="id" name="inspectores_dias" value="1" oninput="cP()"></div></div>
+                            <div class="col-4"><div class="gf-input-group mb-0 money"><input type="number" id="ipr" name="inspectores_precio" placeholder="S/ Día" oninput="cP()"></div></div>
+                        </div>
+                        <div class="text-end mt-1"><b id="txt_si" style="color:var(--gf-primary);">S/ 0.00</b><input type="hidden" id="si" name="sub_inspectores" value="0"></div>
                     </div>
                 </div>
             </div>
 
-            <div class="card" id="c6">
-                <div class="card-header" onclick="tgl('c6')">6. Otros ▼</div>
-                <div class="card-body">
-                    <div class="row">
-                        <div class="col"><label>Viáticos</label><div class="input-box"><input type="number" name="viaticos" placeholder="0.00"></div></div>
-                        <div class="col"><label>Otros</label><div class="input-box"><input type="number" name="operativos" placeholder="0.00"></div></div>
+            <div class="gf-card" id="c6">
+                <div class="gf-card-header" onclick="tgl('c6')">
+                    <span><i class="bi bi-cash-stack me-2"></i>6. Otros Gastos</span>
+                    <i class="bi bi-chevron-down"></i>
+                </div>
+                <div class="gf-card-body">
+                    <div class="row g-2">
+                        <div class="col-6">
+                            <label>Viáticos</label>
+                            <div class="gf-input-group">
+                                <input type="number" name="viaticos" placeholder="0.00">
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <label>Operativos</label>
+                            <div class="gf-input-group">
+                                <input type="number" name="operativos" placeholder="0.00">
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
         </form>
-        <button class="btn-main" id="btnG" onclick="send()">GUARDAR OPERACIÓN</button>
+
+        <button class="btn-save-main" id="btnG" onclick="send()">
+            <i class="bi bi-cloud-arrow-up-fill me-2"></i>GUARDAR OPERACIÓN
+        </button>
     </div>
 
 <script>
     // --- ESTADO ---
-    // Estructura Origen: { proveedor, campo, tara: 1.6, precios:{p1,p2,pr}, kilos:{k1,k2,kr} }
     let origenes = [];
     let pesadas = [];
 
@@ -240,15 +457,14 @@
     function addOrigen() {
         let p = document.getElementById('tmp_prov').value.trim();
         let c = document.getElementById('tmp_campo').value.trim();
-        let t = parseFloat(document.getElementById('tmp_tara').value) || 1.6; // Por defecto 1.6 si falla
+        let t = parseFloat(document.getElementById('tmp_tara').value) || 1.6;
 
         if(p === "") { alert("Escribe nombre"); return; }
         
-        // Inicializamos precios en 0 y kilos en 0
         origenes.push({ 
             proveedor: p, 
             campo: c,
-            tara: t, // <-- Guardamos la tara especifica
+            tara: t,
             precios: { p1:0, p2:0, pr:0 },
             kilos: { k1:0, k2:0, kr:0 }
         });
@@ -256,7 +472,7 @@
         document.getElementById('tmp_prov').value = ""; document.getElementById('tmp_campo').value = "";
         renderOrigenes(); 
         actualizarSelectPesaje();
-        updateLiquidation(); // Refrescar tabla liquidación
+        updateLiquidation(); 
     }
 
     function removeOrigen(idx) { 
@@ -269,12 +485,14 @@
     function renderOrigenes() {
         let h = "";
         origenes.forEach((o, i) => {
-            h += `<div class="origen-row" style="background:#e3f2fd; padding:8px; border-radius:6px;">
+            // Estilo actualizado
+            h += `<div class="origen-item">
                     <div style="flex:1;">
-                        <strong>${o.proveedor}</strong> <small>(${o.campo})</small><br>
-                        <span style="font-size:0.75rem; color:#d32f2f;">Tara: ${o.tara} kg</span>
+                        <div style="font-weight:700; color:#1b5e20;">${o.proveedor}</div>
+                        <div style="font-size:0.8rem; color:#666;">${o.campo}</div>
+                        <span class="badge bg-danger text-white" style="font-size:0.65rem;">Tara: ${o.tara} kg</span>
                     </div>
-                    <button type="button" class="btn-trash" onclick="removeOrigen(${i})">🗑️</button>
+                    <button type="button" class="btn-trash" onclick="removeOrigen(${i})"><i class="bi bi-trash"></i></button>
                   </div>`;
         });
         document.getElementById('lista_origenes').innerHTML = h;
@@ -288,7 +506,7 @@
             origenes.forEach((o, i) => { 
                 let opt=document.createElement('option'); 
                 let t=o.proveedor+(o.campo?" - "+o.campo:""); 
-                opt.value=i; // Usamos el INDEX para vincular
+                opt.value=i; 
                 opt.text=t; 
                 s.add(opt); 
             }); 
@@ -317,23 +535,22 @@
             pBruto = parseFloat(document.getElementById('tp').value), 
             f = document.getElementById('tf').files[0];
             
-        if(!j||!pBruto||!f) return alert("Faltan datos");
+        if(!j||!pBruto||!f) return alert("Faltan datos (Jabas, Peso o Foto)");
         
-        // --- LOGICA DE DESTARA ---
-        let taraUnit = origenes[idx].tara; // Ya validado al crear origen
+        let taraUnit = origenes[idx].tara;
         let descuento = j * taraUnit;
         let pNeto = pBruto - descuento;
         
-        if(pNeto < 0) pNeto = 0; // Seguridad
+        if(pNeto < 0) pNeto = 0; 
 
         let cat = document.getElementById('select_categoria').value; 
-        let provName = origenes[idx].proveedor; // Guardar referencia visual
+        let provName = origenes[idx].proveedor; 
 
         pesadas.push({
-            idx: parseInt(idx), // Index del proveedor en el array origenes
+            idx: parseInt(idx),
             j: j, 
-            pBruto: pBruto, // Bruto para registro
-            pNeto: pNeto,   // Neto para pago
+            pBruto: pBruto,
+            pNeto: pNeto,
             tara: taraUnit,
             f: f, 
             u: URL.createObjectURL(f), 
@@ -345,7 +562,7 @@
         document.getElementById('btn_temp_foto').classList.remove('has-photo');
         
         renderP();
-        updateLiquidation(); // Recalcular kilos por proveedor
+        updateLiquidation(); 
     }
 
     function renderP(){
@@ -358,8 +575,8 @@
             h+=`<div class="pesada-item">
                     <img src="${x.u}" class="pesada-thumb">
                     <div style="flex:1;">
-                        <div style="font-size:0.8rem; color:#1565c0;">${x.origen} <span class="badge-cat ${badgeClass}">${badgeText}</span></div>
-                        <div style="font-size:0.85rem;">
+                        <div style="font-size:0.85rem; font-weight:700; color:#1b5e20;">${x.origen} <span class="badge-cat ${badgeClass}">${badgeText}</span></div>
+                        <div style="font-size:0.8rem; color:#555;">
                             <b>${x.j} jb</b> | Bruto: ${x.pBruto} | <b style="color:#d32f2f">Neto: ${x.pNeto.toFixed(2)}</b>
                         </div>
                     </div>
@@ -370,12 +587,10 @@
         document.getElementById('gtp').innerText=gtpNeto.toFixed(2);
     }
 
-    // --- LIQUIDACIÓN POR PROVEEDOR ---
+    // --- LIQUIDACIÓN ---
     function updateLiquidation() {
-        // 1. Resetear kilos en origenes para recalcular
         origenes.forEach(o => { o.kilos = {k1:0, k2:0, kr:0}; });
 
-        // 2. Sumar kilos de las pesadas a cada origen (USANDO NETO)
         pesadas.forEach(p => {
             if(origenes[p.idx]) {
                 if(p.cat==='cat1') origenes[p.idx].kilos.k1 += p.pNeto;
@@ -384,7 +599,6 @@
             }
         });
 
-        // 3. Renderizar Tabla Dinámica
         let container = document.getElementById('liqui_container');
         container.innerHTML = "";
         let granTotal = 0;
@@ -394,57 +608,53 @@
             granTotal += sub;
 
             container.innerHTML += `
-            <div class="liqui-block">
-                <div class="liqui-header">
+            <div class="liqui-card">
+                <div class="liqui-head">
                     <span>${o.proveedor}</span>
-                    <span style="font-size:0.8rem; color:#444;">(Tara: ${o.tara})</span>
+                    <span style="font-size:0.75rem; color:#666;">Tara: ${o.tara}</span>
                 </div>
                 
                 <div class="liqui-row">
-                    <span class="badge-cat cat1">C1</span> 
+                    <span class="badge-cat cat1 me-2">C1</span> 
                     <div style="flex:1">${o.kilos.k1.toFixed(2)} kg</div>
-                    <div style="width:90px;">
+                    <div style="width:100px;">
                         S/ <input type="number" class="mini-input" value="${o.precios.p1||''}" 
                         oninput="updP(${i}, 'p1', this.value)" placeholder="0.00">
                     </div>
                 </div>
                 
                 <div class="liqui-row">
-                    <span class="badge-cat cat2">C2</span> 
+                    <span class="badge-cat cat2 me-2">C2</span> 
                     <div style="flex:1">${o.kilos.k2.toFixed(2)} kg</div>
-                    <div style="width:90px;">
+                    <div style="width:100px;">
                         S/ <input type="number" class="mini-input" value="${o.precios.p2||''}" 
                         oninput="updP(${i}, 'p2', this.value)" placeholder="0.00">
                     </div>
                 </div>
 
                 <div class="liqui-row">
-                    <span class="badge-cat rastrojo">RZ</span> 
+                    <span class="badge-cat rastrojo me-2">RZ</span> 
                     <div style="flex:1">${o.kilos.kr.toFixed(2)} kg</div>
-                    <div style="width:90px;">
+                    <div style="width:100px;">
                         S/ <input type="number" class="mini-input" value="${o.precios.pr||''}" 
                         oninput="updP(${i}, 'pr', this.value)" placeholder="0.00">
                     </div>
                 </div>
 
-                <div class="liqui-row" style="justify-content:space-between; background:#fffde7; font-weight:bold;">
+                <div class="liqui-row bg-light" style="justify-content:space-between; font-weight:800;">
                     <span>A Pagar:</span>
-                    <span id="sub_txt_${i}">S/ ${sub.toFixed(2)}</span>
+                    <span id="sub_txt_${i}" style="color:#1b5e20;">S/ ${sub.toFixed(2)}</span>
                 </div>
             </div>`;
         });
 
         document.getElementById('txt_gran_total').innerText = "S/ " + granTotal.toFixed(2);
         document.getElementById('total_pagar_texto').value = granTotal.toFixed(2);
-        
-        // Actualizamos inputs JSON para envío
         document.getElementById('origenes_json').value = JSON.stringify(origenes);
     }
 
     function updP(idx, tipo, val) {
         origenes[idx].precios[tipo] = parseFloat(val) || 0;
-        
-        // Recalcular SOLO visuales para no perder foco del input
         let granTotal = 0;
         origenes.forEach((o, i) => {
             let sub = (o.kilos.k1 * o.precios.p1) + (o.kilos.k2 * o.precios.p2) + (o.kilos.kr * o.precios.pr);
@@ -452,15 +662,12 @@
             let el = document.getElementById('sub_txt_' + i);
             if(el) el.innerText = "S/ " + sub.toFixed(2);
         });
-        
         document.getElementById('txt_gran_total').innerText = "S/ " + granTotal.toFixed(2);
         document.getElementById('total_pagar_texto').value = granTotal.toFixed(2);
-        
-        // Guardar estado
         document.getElementById('origenes_json').value = JSON.stringify(origenes);
     }
 
-    // --- PERSONAL (Sin Cambios) ---
+    // --- PERSONAL ---
     function cP(){
         ['cosecha','cargadores','inspectores'].forEach(k=>{
             let p=parseFloat(document.getElementById(k+'_personas').value)||0;
@@ -472,16 +679,22 @@
         });
     }
 
-    function tgl(id){ document.querySelectorAll('.card').forEach(c=>c.classList.remove('active')); document.getElementById(id).classList.add('active'); }
-    function openNav(){ document.getElementById("mySidebar").style.width="250px"; document.getElementById("overlay").style.display="block"; }
+    // --- UI HELPERS ---
+    function tgl(id){ 
+        document.querySelectorAll('.gf-card').forEach(c=>c.classList.remove('active')); 
+        document.getElementById(id).classList.add('active'); 
+    }
+    
+    function openNav(){ document.getElementById("mySidebar").style.width="280px"; document.getElementById("overlay").style.display="block"; }
     function closeNav(){ document.getElementById("mySidebar").style.width="0"; document.getElementById("overlay").style.display="none"; }
     
     window.onload=()=>{ document.getElementById('codigo_unico').value='GF-'+Date.now(); forceGPS(); }
+    
     function forceGPS(){
         navigator.geolocation.getCurrentPosition(p=>{
             document.getElementById('latitud').value=p.coords.latitude; document.getElementById('longitud').value=p.coords.longitude;
             document.getElementById('gpsStatus').className="gps-dot gps-active";
-        }, e=>{ alert("Activa GPS"); });
+        }, e=>{ alert("⚠️ POR FAVOR ACTIVA TU GPS"); });
     }
 
     async function send(){
@@ -489,32 +702,25 @@
         if(!document.getElementById('latitud').value && !confirm("Sin GPS. ¿Seguir?")) return;
         if(origenes.length===0){ alert("Falta Proveedor"); tgl('c1'); return; }
         
-        btn.disabled=true; btn.innerText="Guardando...";
+        btn.disabled=true; btn.innerHTML='<span class="spinner-border spinner-border-sm"></span> Guardando...';
         
-        // PREPARAR DATOS
-        // 1. Origenes ya tiene precios y kilos gracias a updateLiquidation()
         document.getElementById('origenes_json').value = JSON.stringify(origenes);
 
-        // 2. Pesadas: Convertir a formato simple para backend
-        // IMPORTANTE: Enviar 'peso' como NETO y 'peso_bruto' como BRUTO
         let pesadasSimple = pesadas.map(x => ({
             jabas: x.j, 
-            peso: x.pNeto, // EL BACKEND DEBE RECIBIR NETO EN 'peso' para calcular pagos
-            peso_bruto: x.pBruto, // EXTRA para registro
-            origen: x.origen, // Nombre del proveedor
+            peso: x.pNeto, 
+            peso_bruto: x.pBruto, 
+            origen: x.origen, 
             categoria: x.cat
         }));
         
         let fd=new FormData(document.getElementById('formAcopio'));
         fd.append('detalle_pesadas_json', JSON.stringify(pesadasSimple));
         
-        // 3. Fotos
         pesadas.forEach((x,i)=>fd.append('fotos_pesadas[]', x.f));
 
-        // LOGICA ENVIO (OFFLINE FIRST)
         if (!navigator.onLine) {
             try {
-                // Para offline, necesitamos guardar la estructura compleja de origenes
                 const { local_id } = await window.GF_OFFLINE.queueAcopioFromCurrentForm(document.getElementById('formAcopio'), pesadas);
                 alert("✅ Guardado OFFLINE (ID: " + local_id + "). Se enviará al volver internet.");
                 window.location.reload(); return;
@@ -535,12 +741,8 @@
         }
     }
 
-    // UI de Red (Banner)
-    function ensureNetBanner(){
-        let banner = document.getElementById('netBanner');
-        if (!banner) return; // Ya existe en HTML
-        return banner;
-    }
+    // UI de Red
+    function ensureNetBanner(){ let banner = document.getElementById('netBanner'); if (!banner) return; return banner; }
     async function refreshNetUI(){
         const banner = document.getElementById('netBanner');
         const pending = document.getElementById('pendingCount');
