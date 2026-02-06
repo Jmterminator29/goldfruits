@@ -57,33 +57,56 @@ if(mysqli_num_rows($res) > 0) {
     while($row = mysqli_fetch_assoc($res)) {
         $sql_nom = "SELECT * FROM nomina_procesada WHERE id_trabajador = {$row['id_trabajador']} AND mes_pago = $mes AND anio_pago = $anio";
         $q_nom = mysqli_query($conexion, $sql_nom);
-        if(mysqli_num_rows($q_nom) == 0) continue; 
-
-        $arr_hn = []; $arr_h25 = []; $arr_h35 = [];
+        
+        // Inicializar variables en 0
+        $arr_hn = []; $arr_h25 = []; $arr_h35 = []; $arr_hNoct = [];
         $dias_total = 0; $db_beta = 0; $db_bono6 = 0; $db_noct = 0; $db_afp = 0;
         $neto_1ra = 0; $neto_2da = 0;
 
-        while($n = mysqli_fetch_assoc($q_nom)) {
-            $arr_hn[] = $n['horas_normales_total'];
-            $arr_h25[] = $n['horas_25_total'];
-            $arr_h35[] = $n['horas_35_total'];
-            $dias_total += $n['dias_trabajados'];
-            $db_beta += (float)$n['bono_beta'];
-            $db_bono6 += (float)$n['bono_extra_6'];
-            $db_noct += (float)$n['bono_nocturno'];
-            $db_afp += (float)$n['monto_afp'];
-            if($n['periodo_pago'] == '1RA QUINCENA') $neto_1ra += (float)$n['monto_neto_final'];
-            if($n['periodo_pago'] == '2DA QUINCENA') $neto_2da += (float)$n['monto_neto_final'];
+        // Si hay nóminas, sumamos
+        if(mysqli_num_rows($q_nom) > 0) {
+            while($n = mysqli_fetch_assoc($q_nom)) {
+                $arr_hn[] = $n['horas_normales_total'];
+                $arr_h25[] = $n['horas_25_total'];
+                $arr_h35[] = $n['horas_35_total'];
+                $arr_hNoct[] = $n['horas_nocturnas_total'];
+                
+                $dias_total += $n['dias_trabajados'];
+                $db_beta += (float)$n['bono_beta'];
+                $db_bono6 += (float)$n['bono_extra_6'];
+                $db_noct += (float)$n['bono_nocturno'];
+                $db_afp += (float)$n['monto_afp'];
+                
+                if($n['periodo_pago'] == '1RA QUINCENA') $neto_1ra += (float)$n['monto_neto_final'];
+                if($n['periodo_pago'] == '2DA QUINCENA') $neto_2da += (float)$n['monto_neto_final'];
+            }
         }
 
+        // Sumar horas en decimales
         $dec_hn = sumar_tiempos_db($arr_hn);
         $dec_h25 = sumar_tiempos_db($arr_h25);
         $dec_h35 = sumar_tiempos_db($arr_h35);
+        $dec_noct = sumar_tiempos_db($arr_hNoct);
         
+        // Cálculos Unitarios
         $rbh = ((float)$row['sueldo_base'] / 30) / 8;
-        $gh = $rbh * 0.1666; $ch = $rbh * 0.0972; $rd_h = $rbh + $gh + $ch;
+        $gh = $rbh * 0.1666; $ch = $rbh * 0.0972; 
+        $rd_h = $rbh + $gh + $ch;
 
-        $dec_noct = ($rd_h > 0) ? ($db_noct / ($rd_h * 0.35)) : 0;
+        // Cálculos Monetarios
+        $pago_base = $dec_hn * $rd_h;
+        $rem_25 = $dec_h25 * $rd_h * 1.25;
+        $rem_35 = $dec_h35 * $rd_h * 1.35;
+        
+        // Asignación Familiar
+        $af_hora = ($rmv / 30 * 0.10) / 8;
+        $asig_fam = ($row['tiene_hijos'] == 1) ? ($af_hora * $dec_hn) : 0;
+
+        // Total Remuneración Bruta
+        $total_rem = $pago_base + $rem_25 + $rem_35 + $db_noct + $db_beta + $db_bono6 + $asig_fam;
+        
+        // Neto a Pagar
+        $neto_final = $total_rem - $db_afp;
 
         $fila_data = [
             "num" => 0, 
@@ -97,28 +120,42 @@ if(mysqli_num_rows($res) > 0) {
             "banco" => $row['banco_nombre'],
             "cuenta" => $row['numero_cuenta'],
             "hijos" => ($row['tiene_hijos'] == 1 ? 'SI' : 'NO'),
+            
+            // Horas visuales
             "h_trab" => formato_hora_visual($dec_hn),
             "h_25" => formato_hora_visual($dec_h25),
             "h_35" => formato_hora_visual($dec_h35),
             "h_noct" => formato_hora_visual($dec_noct),
             "h_total" => formato_hora_visual($dec_hn + $dec_h25 + $dec_h35),
             "dec_total" => (float)number_format($dec_hn + $dec_h25 + $dec_h35 + $dec_noct, 2),
-            "pago_base" => ($dec_hn * $rd_h),
-            "rem_25" => ($dec_h25 * $rd_h * 1.25),
-            "rem_35" => ($dec_h35 * $rd_h * 1.35),
+            
+            // Montos
+            "pago_base" => $pago_base,
+            "rem_25" => $rem_25,
+            "rem_35" => $rem_35,
             "rem_noct" => $db_noct,
-            "asig_fam" => ($row['tiene_hijos'] == 1 ? ($rmv * 0.10) : 0),
-            "total_rem" => ($dec_hn * $rd_h) + ($dec_h25 * $rd_h * 1.25) + ($dec_h35 * $rd_h * 1.35) + $db_noct + $db_bono6 + ($row['tiene_hijos'] == 1 ? ($rmv * 0.10) : 0),
+            "asig_fam" => $asig_fam,
+            "total_rem" => $total_rem,
             "afp_desc" => $db_afp,
-            "neto" => (($dec_hn * $rd_h) + ($dec_h25 * $rd_h * 1.25) + ($dec_h35 * $rd_h * 1.35) + $db_noct + $db_bono6 + $db_beta + ($row['tiene_hijos'] == 1 ? ($rmv * 0.10) : 0)) - $db_afp,
+            "neto" => $neto_final,
+            
             "sp1" => "", "sp2" => "", "sp3" => "",
+            
+            // Desglose (Informativo Excel)
             "ph_base" => (float)number_format($dec_hn * $rbh, 2),
             "ph_grati" => (float)number_format($dec_hn * $gh, 2),
             "ph_cts" => (float)number_format($dec_hn * $ch, 2),
             "ph_beta" => (float)number_format($db_beta, 2),
             "ph_6" => (float)number_format($db_bono6, 2),
-            "pago_1ra" => $neto_1ra, "pago_2da" => $neto_2da, "total_mes" => ($neto_1ra + $neto_2da),
-            "dias_val" => $dias_total, "beta_val" => $db_beta, "bono6_val" => $db_bono6
+            
+            // Resumen Pagos
+            "pago_1ra" => $neto_1ra, 
+            "pago_2da" => $neto_2da, 
+            "total_mes" => ($neto_1ra + $neto_2da),
+            
+            "dias_val" => $dias_total, 
+            "beta_val" => $db_beta, 
+            "bono6_val" => $db_bono6
         ];
 
         if($row['en_planilla'] == 'SI') { $lista_planilla[] = $fila_data; } 
@@ -146,6 +183,8 @@ if(mysqli_num_rows($res) > 0) {
         .bg-no { background: #FDEDEC; color: #CB4335; border: 1px solid #F5B7B1; }
         .nav-gf-pills .nav-link { background: #EDF2F4; color: #7F8C8D; font-weight: 700; border-radius: 12px; margin-right: 10px; padding: 12px 25px; cursor: pointer; border: none; }
         .nav-gf-pills .nav-link.active { background: var(--gf-main); color: white; }
+        /* Clases para ocultar filas */
+        .fila-oculta { display: none !important; }
     </style>
 </head>
 <body>
@@ -169,8 +208,15 @@ if(mysqli_num_rows($res) > 0) {
                     <input type="number" name="anio" value="<?= $anio ?>" class="form-control form-control-sm fw-bold shadow-sm" style="width:85px">
                     <button type="submit" class="btn btn-sm btn-dark px-3 rounded-3">Filtrar</button>
                 </form>
+                
                 <div style="width:2px; height:30px; background:#DEE2E6;"></div>
-                <div class="d-flex gap-2">
+                
+                <div class="d-flex align-items-center gap-2">
+                    <div class="form-check form-switch me-2">
+                        <input class="form-check-input" type="checkbox" id="chkVerCeros" onchange="toggleCeros()">
+                        <label class="form-check-label small fw-bold text-muted" for="chkVerCeros" style="cursor:pointer;">Ver S/ 0.00</label>
+                    </div>
+
                     <select id="export_periodo" class="form-select form-select-sm fw-bold shadow-sm" style="width:150px; color: var(--gf-main);">
                         <option value="TODO">MES COMPLETO</option>
                         <option value="1RA">1RA QUINCENA</option>
@@ -213,9 +259,12 @@ if(mysqli_num_rows($res) > 0) {
                 <th style="background:#546E7A">Beta</th><th style="background:#546E7A">Noct</th><th style="background:#546E7A">6%</th>
             </tr>
         </thead>
-        <tbody>
-            <?php foreach($lista as $i): ?>
-            <tr>
+        <tbody class="cuerpo-tabla">
+            <?php foreach($lista as $i): 
+                // Clase especial si el neto es 0
+                $classCero = ($i['neto'] <= 0) ? 'fila-cero fila-oculta' : ''; 
+            ?>
+            <tr class="<?= $classCero ?>" data-neto="<?= $i['neto'] ?>">
                 <td style="text-align: left; padding-left: 25px;"><strong><?= $i['trabajador'] ?></strong></td>
                 <td><?= str_replace("DNI - ","",$i['dni']) ?></td>
                 <td><span class="badge-status <?= $i['hijos']=='SI'?'bg-si':'bg-no' ?>"><?= $i['hijos'] ?></span></td>
@@ -240,9 +289,33 @@ if(mysqli_num_rows($res) > 0) {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 
 <script>
+    // Al cargar la página, ejecutar el filtro inicial (Ocultar ceros)
+    document.addEventListener('DOMContentLoaded', function() {
+        toggleCeros();
+    });
+
+    function toggleCeros() {
+        const mostrar = document.getElementById('chkVerCeros').checked;
+        const filasCero = document.querySelectorAll('.fila-cero');
+        filasCero.forEach(row => {
+            if (mostrar) row.classList.remove('fila-oculta');
+            else row.classList.add('fila-oculta');
+        });
+    }
+
     async function generarExcelDetallado() {
         const wb = new ExcelJS.Workbook();
-        const crearHoja = (nombreHoja, datos) => {
+        
+        // Obtener estado del switch para filtrar exportación
+        const mostrarCeros = document.getElementById('chkVerCeros').checked;
+
+        const crearHoja = (nombreHoja, datosOriginales) => {
+            // FILTRADO INTELIGENTE PARA EXCEL
+            let datos = datosOriginales;
+            if (!mostrarCeros) {
+                datos = datosOriginales.filter(d => parseFloat(d.neto) > 0);
+            }
+
             const ws = wb.addWorksheet(nombreHoja);
             
             const columnasEstructura = [
@@ -306,13 +379,18 @@ if(mysqli_num_rows($res) > 0) {
                 r.eachCell(cell => { cell.border = { top: {style:'thin'}, left: {style:'thin'}, bottom: {style:'thin'}, right: {style:'thin'} }; cell.alignment = { vertical: 'middle', horizontal: 'center' }; });
             });
         };
-        crearHoja("PLANILLA", <?= json_encode($lista_planilla) ?>); crearHoja("SIN PLANILLA", <?= json_encode($lista_sin_planilla) ?>);
+        
+        crearHoja("PLANILLA", <?= json_encode($lista_planilla) ?>); 
+        crearHoja("SIN PLANILLA", <?= json_encode($lista_sin_planilla) ?>);
+        
         const buffer = await wb.xlsx.writeBuffer();
         saveAs(new Blob([buffer]), `Reporte_Goldfruits_Final.xlsx`);
     }
 
     async function generarExcelResumen() {
         const periodo = document.getElementById('export_periodo').value;
+        const mostrarCeros = document.getElementById('chkVerCeros').checked;
+
         const wb = new ExcelJS.Workbook();
         const ws = wb.addWorksheet("Resumen");
         ws.columns = [
@@ -322,9 +400,18 @@ if(mysqli_num_rows($res) > 0) {
             { header: '2DA QUINCENA', key: 'p2', width: 15, style: { numFmt: '"S/"#,##0.00' } },
             { header: 'TOTAL MES', key: 'tm', width: 18, style: { numFmt: '"S/"#,##0.00', font: { bold: true } } }
         ];
+        
         let raw = [...<?= json_encode($lista_planilla) ?>, ...<?= json_encode($lista_sin_planilla) ?>];
+        
+        // FILTRADO INTELIGENTE
+        if (!mostrarCeros) {
+            raw = raw.filter(r => r.total_mes > 0);
+        }
+
         let datos = (periodo === '1RA') ? raw.filter(r => r.pago_1ra > 0) : (periodo === '2DA') ? raw.filter(r => r.pago_2da > 0) : raw;
+        
         datos.forEach((r, i) => { ws.addRow({ num: i+1, trabajador: r.trabajador, dni: r.dni.replace("DNI - ",""), banco: r.banco, cuenta: r.cuenta, p1: r.pago_1ra, p2: r.pago_2da, tm: r.total_mes }); });
+        
         const buffer = await wb.xlsx.writeBuffer();
         saveAs(new Blob([buffer]), `Resumen_Pagos_${periodo}.xlsx`);
     }

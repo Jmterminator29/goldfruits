@@ -14,13 +14,16 @@ $ff = $_GET['ff'] ?? '';
 // Helpers PHP
 function lastDayOfMonth($y, $m) { return date('Y-m-d', strtotime("$y-$m-01 +1 month -1 day")); }
 function pad2($n) { return str_pad($n, 2, '0', STR_PAD_LEFT); }
+// Helper para convertir hora HH:mm:ss a decimal en PHP (Para calcular AF al cargar)
+function timeToDec($t) { 
+    $p = explode(':', $t); 
+    return ($p[0]??0) + (($p[1]??0)/60) + (($p[2]??0)/3600); 
+}
 
 if ($fi === '' || $ff === '') {
     $m = (int)$mes; $y = (int)$anio; $prevM = $m - 1; $prevY = $y;
     if ($prevM <= 0) { $prevM = 12; $prevY = $y - 1; }
-    
-    $lastPrev = lastDayOfMonth($prevY, $prevM);
-    $lastCurr = lastDayOfMonth($y, $m);
+    $lastPrev = lastDayOfMonth($prevY, $prevM); $lastCurr = lastDayOfMonth($y, $m);
 
     if ($periodo === '1RA QUINCENA') { 
         $fi = $fi ?: $lastPrev; 
@@ -35,7 +38,7 @@ if ($fi === '' || $ff === '') {
 $res_c = mysqli_query($conexion, "SELECT valor FROM configuracion_global WHERE clave='RMV'");
 $rmv = mysqli_fetch_assoc($res_c)['valor'] ?? 1130.00;
 
-// 3. Obtener Trabajadores y Nóminas (CONSULTA CORREGIDA PARA TRAER DATOS GUARDADOS)
+// 3. Obtener Trabajadores y Nóminas
 $trabajadores_db = [];
 $sql = "SELECT t.id_trabajador, t.apellidos_nombres, t.numero_documento, c.monto_categoria,
                t.tiene_hijos, t.en_planilla, COALESCE(a.porcentaje_descuento, 0) as p_seguro,
@@ -43,7 +46,7 @@ $sql = "SELECT t.id_trabajador, t.apellidos_nombres, t.numero_documento, c.monto
                n.id_nomina,
                n.dias_trabajados as dias_guardados,
                n.detalle_horarios,
-               /* DATOS RECUPERADOS DE LA BD */
+               /* DATOS PERSISTENTES DE BD */
                n.horas_normales_total,
                n.horas_25_total,
                n.horas_35_total,
@@ -72,7 +75,6 @@ while($t = mysqli_fetch_assoc($res_t)) {
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
 
 <style>
-  /* --- Estilos Generales --- */
   .contenedor-nomina-total { width: 100%; background-color: #f4f7f6; min-height: 100vh; padding: 15px; }
   .table-nomina { background: white; border-radius: 10px; overflow: hidden; font-size: 0.65rem; }
   .table-nomina th { padding: 5px; vertical-align: middle; background-color: #2c3e50; color: white; border: 1px solid #444; }
@@ -80,28 +82,22 @@ while($t = mysqli_fetch_assoc($res_t)) {
   .bg-jornal { background-color: #e8f4fd; font-weight: bold; }
   .inp-invisible { border: none; background: transparent; pointer-events: none; width: 100%; text-align: center; font-weight: bold; }
 
-  /* --- Estilos NO PLANILLA (Color Naranja) --- */
-  .fila-no-planilla { background-color: #fff3cd !important; } 
+  .fila-no-planilla { background-color: #fff3cd !important; }
   .fila-no-planilla td { border-bottom: 1px solid #ffecb5; }
-
-  /* --- Panel de Carga --- */
+  .fila-oculta { display: none; }
+  
   .seccion-carga { background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin-bottom: 20px; }
   .range-box { background:#fff; border-radius:12px; padding:12px; box-shadow:0 4px 12px rgba(0,0,0,0.05); }
 
-  /* --- Z-INDEX FIX --- */
   .modal-backdrop { z-index: 2000 !important; }
   .modal { z-index: 2050 !important; }
   .modal-dialog { z-index: 2100 !important; }
 
-  /* --- TRAMOS --- */
-  .tramo-input { background: #f8f9fa; padding: 6px; border-radius: 8px; border: 1px solid #dee2e6; transition: all 0.2s ease; }
-  .tramo-input:hover { border-color: #198754; background: #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
-  .time-field { width: 90px !important; border: 1px solid #ced4da; border-radius: 5px; text-align: center; font-weight: 600; color: #2c3e50; }
+  .tramo-input { background: #f8f9fa; padding: 6px; border-radius: 8px; border: 1px solid #dee2e6; display: flex; align-items: center; gap: 5px; margin-bottom: 5px; }
+  .time-field { width: 85px !important; border: 1px solid #ced4da; border-radius: 5px; text-align: center; font-weight: 600; color: #2c3e50; }
   .f-txt { font-weight: 700; color: #0d6efd; font-size: 0.85rem; }
   .total-row td { background-color: #212529; color: #fff; font-weight: bold; }
   
-  /* --- VISIBILIDAD --- */
-  .fila-oculta { display: none; }
   .busqueda-flotante { position: relative; }
   .resultado-busqueda { position: absolute; top: 100%; left: 0; right: 0; z-index: 1000; max-height: 200px; overflow-y: auto; display: none; border: 1px solid #ddd; background: white; }
   .nav-tabs .nav-link.active { font-weight: bold; color: #198754; border-bottom: 3px solid #198754; }
@@ -190,7 +186,7 @@ while($t = mysqli_fetch_assoc($res_t)) {
                 <li class="nav-item"><button class="nav-link" id="missing-tab" data-bs-toggle="tab" data-bs-target="#missing-content" type="button"><i class="bi bi-question-circle-fill text-danger"></i> No Registrados (<span id="countMissing">0</span>)</button></li>
             </ul>
             <div class="d-flex align-items-center gap-2">
-                 <div class="form-check form-switch me-3">
+                 <div class="form-check form-switch me-3" title="Si activa: Reemplaza días existentes con Excel. Si desactiva: Solo agrega días nuevos.">
                     <input class="form-check-input" type="checkbox" id="chkSobrescribir">
                     <label class="form-check-label small fw-bold text-danger" for="chkSobrescribir">Sobrescribir</label>
                 </div>
@@ -253,7 +249,7 @@ while($t = mysqli_fetch_assoc($res_t)) {
                     $diasBD = $t['dias_guardados'] ?? 0;
                     $jsonDB = htmlspecialchars($t['detalle_horarios'] ?? '', ENT_QUOTES, 'UTF-8');
                     
-                    // --- CORRECCIÓN CLAVE: PRECARGA DE DATOS GUARDADOS ---
+                    // --- CARGAR DATOS DESDE BD (Evita 0 al recargar) ---
                     $hN_bd = $t['horas_normales_total'] ?? '00:00';
                     $h25_bd = $t['horas_25_total'] ?? '00:00';
                     $h35_bd = $t['horas_35_total'] ?? '00:00';
@@ -261,8 +257,23 @@ while($t = mysqli_fetch_assoc($res_t)) {
                     $bonoNoct_bd = $t['bono_nocturno'] ?? 0;
                     $bonoBeta_bd = $t['bono_beta'] ?? 0;
                     $bono6_bd = $t['bono_extra_6'] ?? 0;
+                    $afp_bd = $t['monto_afp'] ?? 0;
+                    $neto_bd = $t['monto_neto_final'] ?? 0;
+                    $base_afp_bd = $t['monto_base_afp'] ?? 0;
+
+                    // CALCULO PHP (Para visualización inicial sin esperar a JS)
+                    $rb = (float)$t['monto_categoria'];
+                    $rbh = $rb / 30 / 8;
+                    $gh_h = $rbh * 0.1666;
+                    $ct_h = $rbh * 0.0972;
+                    $jornal_h = $rbh + $gh_h + $ct_h;
                     
-                    // Visibilidad
+                    // Asig Fam Calculada en PHP
+                    $af_hora = ($rmv / 30 * 0.10) / 8;
+                    $hN_dec = timeToDec($hN_bd);
+                    $af_total = $t['tiene_hijos'] ? ($af_hora * $hN_dec) : 0;
+
+                    // Estilos
                     $claseOculta = ($diasBD > 0) ? '' : 'fila-oculta';
                     $claseNoPlanilla = ($t['en_planilla'] === 'NO') ? 'fila-no-planilla' : '';
                     $iconoNoPlanilla = ($t['en_planilla'] === 'NO') ? '<i class="bi bi-cone-striped text-warning me-1"></i>' : '';
@@ -283,36 +294,39 @@ while($t = mysqli_fetch_assoc($res_t)) {
                                     <small class="text-muted" style="font-size: 0.55rem;"><?= $dni ?> | <?= $t['en_planilla']=='SI'?'PLANILLA':'RECIBO' ?></small>
                                 </div>
                             </div>
-                            
                             <input type="hidden" name="trab[<?= $i ?>][id]" value="<?= $t['id_trabajador'] ?>">
                             <input type="hidden" name="trab[<?= $i ?>][dni]" value="<?= $dni ?>">
                             <input type="hidden" name="trab[<?= $i ?>][json_horarios]" class="val-json" value="<?= $jsonDB ?>">
                         </td>
                         <td><input type="number" name="trab[<?= $i ?>][dias]" class="inp-invisible inp-dias" value="<?= $diasBD ?>" readonly></td>
                         
-                        <td class="lbl-rb text-muted small">0.0000</td>
-                        <td class="lbl-grati text-muted small">0.0000</td>
-                        <td class="lbl-cts text-muted small">0.0000</td>
-                        <td class="lbl-jornal-h bg-jornal text-primary">0.0000</td>
-                        <td class="text-warning fw-bold txt-he25">00:00</td>
-                        <td class="text-danger fw-bold txt-he35">00:00</td>
-                        <td class="lbl-asig-fam">0.00</td>
-                        <td class="lbl-bnoct text-dark fw-bold" style="background:#FCF3CF;">00:00</td>
-                        <td class="lbl-bet-6">0.00</td>
-                        <td class="lbl-beta-bono">0.00</td>
-                        <td class="lbl-descto text-danger">0.00</td>
-                        <td class="bg-primary bg-opacity-10 fw-bold"><span class="lbl-neto">0.00</span></td>
+                        <td class="lbl-rb text-muted small"><?= number_format($rbh, 4) ?></td>
+                        <td class="lbl-grati text-muted small"><?= number_format($gh_h, 4) ?></td>
+                        <td class="lbl-cts text-muted small"><?= number_format($ct_h, 4) ?></td>
+                        <td class="lbl-jornal-h bg-jornal text-primary"><?= number_format($jornal_h, 4) ?></td>
+                        <td class="text-warning fw-bold txt-he25"><?= $h25_bd ?></td>
+                        <td class="text-danger fw-bold txt-he35"><?= $h35_bd ?></td>
+                        <td class="lbl-asig-fam"><?= number_format($af_total, 2) ?></td>
+                        <td class="lbl-bnoct text-dark fw-bold" style="background:#FCF3CF;"><?= $hNoct_bd ?></td>
+                        <td class="lbl-bet-6"><?= number_format($bono6_bd, 2) ?></td>
+                        <td class="lbl-beta-bono"><?= number_format($bonoBeta_bd, 2) ?></td>
+                        <td class="lbl-descto text-danger"><?= number_format($afp_bd, 2) ?></td>
+                        <td class="bg-primary bg-opacity-10 fw-bold"><span class="lbl-neto"><?= number_format($neto_bd, 2) ?></span></td>
+                        
                         <td>
-                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 border-0" onclick="abrirModalAsistencia('<?= $dni ?>')"><i class="bi bi-pencil-square fs-6"></i></button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary py-0 border-0" onclick="abrirModalAsistencia('<?= $dni ?>')">
+                                <i class="bi bi-pencil-square fs-6"></i>
+                            </button>
                         </td>
 
                         <input type="hidden" name="trab[<?= $i ?>][horas_n]" class="val-hN" value="<?= $hN_bd ?>">
                         <input type="hidden" name="trab[<?= $i ?>][horas_25]" class="val-h25" value="<?= $h25_bd ?>">
                         <input type="hidden" name="trab[<?= $i ?>][horas_35]" class="val-h35" value="<?= $h35_bd ?>">
                         <input type="hidden" name="trab[<?= $i ?>][horas_noct]" class="val-hNoct" value="<?= $hNoct_bd ?>">
-                        <input type="hidden" name="trab[<?= $i ?>][base_afp]" class="val-base">
-                        <input type="hidden" name="trab[<?= $i ?>][afp_monto]" class="val-afp">
-                        <input type="hidden" name="trab[<?= $i ?>][neto]" class="val-neto">
+                        
+                        <input type="hidden" name="trab[<?= $i ?>][base_afp]" class="val-base" value="<?= $base_afp_bd ?>">
+                        <input type="hidden" name="trab[<?= $i ?>][afp_monto]" class="val-afp" value="<?= $afp_bd ?>">
+                        <input type="hidden" name="trab[<?= $i ?>][neto]" class="val-neto" value="<?= $neto_bd ?>">
                         <input type="hidden" name="trab[<?= $i ?>][bono_beta]" class="val-beta" value="<?= $bonoBeta_bd ?>">
                         <input type="hidden" name="trab[<?= $i ?>][bono_6]" class="val-bono6" value="<?= $bono6_bd ?>">
                         <input type="hidden" name="trab[<?= $i ?>][bono_nocturno]" class="val-bnoct" value="<?= $bonoNoct_bd ?>">
@@ -326,7 +340,7 @@ while($t = mysqli_fetch_assoc($res_t)) {
                     <span class="text-warning text-uppercase small fw-bold d-block">Total a Pagar (Visibles)</span>
                     <span class="fw-bold fs-4">S/ <span id="totalGeneral">0.00</span></span>
                 </div>
-                <div class="d-flex gap-3">
+                <div>
                     <button type="button" onclick="enviarNomina('BORRADOR')" class="btn btn-success fw-bold px-5 py-3 rounded-pill shadow-lg fs-6">
                         <i class="bi bi-save me-2"></i> GUARDAR CAMBIOS
                     </button>
@@ -390,19 +404,19 @@ while($t = mysqli_fetch_assoc($res_t)) {
 
 <script>
 // --- Variables Globales ---
-const RMV = <?= $rmv ?>; // 1130
+const RMV = <?= $rmv ?>; 
 const trabajadoresDB = <?= json_encode($trabajadores_db) ?>;
 let asistenciaGlobal = {}, datosTemporalesExcel = {}, datosDesconocidos = {}, dniActivo = null;
 
-// --- MOVER MODALES AL BODY ---
+// --- INICIALIZACION ---
 document.addEventListener('DOMContentLoaded', function() {
     ['modalAsistencia', 'modalCrearTrabajador'].forEach(id => { var el=document.getElementById(id); if(el) document.body.appendChild(el); });
     Object.keys(trabajadoresDB).forEach(dni => { asistenciaGlobal[dni] = { nombre: trabajadoresDB[dni].apellidos_nombres, dias: {} }; });
     pintarRangoActivo();
-    recalcularTodo(); // ESTO RECUPERA LOS DATOS VISUALMENTE
+    // Suma inicial del total visual que trajo PHP
+    recalcTotalGeneral(); 
 });
 
-// --- VISIBILIDAD ---
 function filtrarBusqueda(input) {
     const txt = input.value.toLowerCase().trim(); const lista = document.getElementById('listaResultados'); lista.innerHTML = '';
     if(txt.length < 2) { lista.style.display = 'none'; return; }
@@ -420,7 +434,13 @@ function filtrarBusqueda(input) {
 
 function mostrarTrabajador(dni) {
     const f = document.getElementById('fila-' + dni);
-    if(f) { f.classList.remove('fila-oculta'); f.scrollIntoView({behavior:'smooth',block:'center'}); f.classList.add('table-warning'); setTimeout(()=>f.classList.remove('table-warning'),2000); inyectarFilaEspecifica(dni); }
+    if(f) { 
+        f.classList.remove('fila-oculta'); 
+        f.scrollIntoView({behavior:'smooth',block:'center'}); 
+        f.classList.add('table-warning'); 
+        setTimeout(()=>f.classList.remove('table-warning'),2000); 
+        inyectarFilaEspecifica(dni); 
+    }
 }
 
 function toggleVerTodos() {
@@ -432,7 +452,13 @@ function toggleVerTodos() {
     recalcTotalGeneral();
 }
 
-// --- EXCEL ---
+function aplicarRangoYRecalcular(){ 
+    document.querySelectorAll('.fila-nomina').forEach(tr => {
+        inyectarFilaEspecifica(tr.dataset.dni);
+    });
+    pintarRangoActivo(); 
+}
+
 function procesarArchivoExcel() {
     const rango = getRangoActivo(); if(!rango) return alert("Rango inválido.");
     const file = document.getElementById('inputExcel').files[0]; if(!file) return alert("Seleccione archivo.");
@@ -455,22 +481,34 @@ function procesarArchivoExcel() {
                 for(let k=0;k<raw.length;k++){
                     let s = parseTime(raw[k].trim());
                     if(s>0){
-                        // Redondeo 5 min
-                        let totalM = s/60; 
-                        let roundedM = 0;
-                        if(k % 2 === 0) roundedM = Math.ceil(totalM / 5) * 5; // Entrada
-                        else roundedM = Math.floor(totalM / 5) * 5; // Salida
-                        let h = Math.floor(roundedM / 60);
-                        let m = roundedM % 60;
+                        let tM = s/60; let rM = 0;
+                        if(k % 2 === 0) rM = Math.ceil(tM/5)*5; 
+                        else rM = Math.floor(tM/5)*5; 
+                        let h = Math.floor(rM/60); let m = rM%60;
                         arr.push(`${h.toString().padStart(2,'0')}:${m.toString().padStart(2,'0')}:00`);
                     }
                 }
                 if(arr.length>0) { if(!datosTemporalesExcel[dni]) datosTemporalesExcel[dni]={}; datosTemporalesExcel[dni][fISO] = {raw: arr.join(',')}; }
             }
             renderReporte();
-        } catch(e){ console.error(e); alert("Error leyendo Excel."); }
+        } catch(e){ console.error(e); alert("Error leyendo Excel: " + e.message); }
     };
     reader.readAsArrayBuffer(file);
+}
+
+function parseFechaFlexible(v) {
+    if (!v) return null;
+    if (typeof v === 'number') {
+        const dt = new Date(Math.round((v - 25569) * 86400 * 1000));
+        return dt.toISOString().split('T')[0];
+    }
+    const s = String(v).trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
+        const p = s.split('/');
+        return `${p[2]}-${p[1]}-${p[0]}`;
+    }
+    return null;
 }
 
 function renderReporte() {
@@ -484,13 +522,26 @@ function renderReporte() {
     if(c2>0 && c1===0) new bootstrap.Tab(document.getElementById('missing-tab')).show(); else new bootstrap.Tab(document.getElementById('found-tab')).show();
 }
 
+// CORRECCIÓN FUSIÓN: No borrar datos anteriores
 function confirmarInyeccion() {
     const r=getRangoActivo(); const ov=document.getElementById('chkSobrescribir').checked;
     document.querySelectorAll('.chk-conf:checked').forEach(c=>{
         const d=c.value, f=document.getElementById('fila-'+d);
         f.classList.remove('fila-oculta');
-        let act={}; try{act=JSON.parse(f.querySelector('.val-json').value||'{}')}catch(e){}
-        for(let k in datosTemporalesExcel[d]){ if(dentroDeRango(k,r)){ if(!act[k]||ov) act[k]=datosTemporalesExcel[d][k]; } }
+        
+        let act={}; 
+        try{ act=JSON.parse(f.querySelector('.val-json').value||'{}') }catch(e){}
+        
+        // Mezclar datos nuevos con los existentes
+        for(let k in datosTemporalesExcel[d]){ 
+            if(dentroDeRango(k,r)){ 
+                // Si no existe el día O si el usuario quiere sobrescribir
+                if(!act[k] || ov) {
+                    act[k] = datosTemporalesExcel[d][k]; 
+                }
+            } 
+        }
+        
         f.querySelector('.val-json').value=JSON.stringify(act);
         inyectarFilaEspecifica(d);
     });
@@ -499,24 +550,35 @@ function confirmarInyeccion() {
 }
 function cancelarCarga(){ document.getElementById('resumenCarga').classList.add('d-none'); }
 
-// --- CALCULOS FILA (COMPLETO) ---
 function inyectarFilaEspecifica(dni){
     const tr=document.getElementById('fila-'+dni); if(!tr) return;
     let obj={}; try{obj=JSON.parse(tr.querySelector('.val-json').value||'{}')}catch(e){}
+    
+    // Calcular totales recorriendo TODO el objeto JSON (no solo el rango)
+    // para respetar la persistencia completa
     const k=Object.keys(obj);
-    if(k.length===0 && !document.getElementById('chkVerTodos').checked){ tr.classList.add('fila-oculta'); recalcTotalGeneral(); return; }
-    else if(k.length>0) tr.classList.remove('fila-oculta');
-
     let tN=0,t25=0,t35=0,tNoct=0;
+    
+    // Si no hay días, y no estamos en "Ver Todos", ocultar
+    if(k.length===0 && !document.getElementById('chkVerTodos').checked){ 
+        tr.classList.add('fila-oculta'); 
+        recalcTotalGeneral(); 
+        return; 
+    } else if(k.length>0) {
+        tr.classList.remove('fila-oculta');
+    }
+
+    // Sumar horas de todos los días registrados
     for(let f in obj){
-        let s=0; const r=(obj[f].raw||"").split(',');
-        for(let i=0;i<r.length;i+=2){
-            const t1=parseTime(r[i]), t2=parseTime(r[i+1]);
+        let s=0, raw=(obj[f].raw||"").split(',');
+        for(let i=0;i<raw.length;i+=2){
+            const t1=parseTime(raw[i]), t2=parseTime(raw[i+1]);
             if(t2>t1){ s+=(t2-t1); tNoct+=calculateNightSeconds(t1,t2); }
         }
         s=redondearATiempoExacto(s); let h=s/3600;
         tN+=Math.min(h,8); let ex=Math.max(0,h-8); t25+=Math.min(ex,2); t35+=Math.max(0,ex-2);
     }
+    
     tr.querySelector('.inp-dias').value=k.length;
     tr.querySelector('.val-hN').value=decimalToTime(tN); 
     tr.querySelector('.val-h25').value=decimalToTime(t25);
@@ -532,24 +594,20 @@ function calcularFila(tr) {
     const hijos = parseInt(tr.dataset.hijos) || 0;
     const enPlanilla = tr.dataset.planilla; 
 
-    // Horas decimales
     const hN = parseTime(tr.querySelector(".val-hN").value)/3600;
     const h25 = parseTime(tr.querySelector(".val-h25").value)/3600;
     const h35 = parseTime(tr.querySelector(".val-h35").value)/3600;
     const hNoct = parseTime(tr.querySelector(".val-hNoct").value)/3600;
 
-    // VALORES UNITARIOS
-    const rbh = rb / 30 / 8; // Basico Hora
+    const rbh = rb / 30 / 8; 
     const gh_hora = rbh * 0.1666; 
     const ct_hora = rbh * 0.0972; 
     const jornal_hora_total = rbh + gh_hora + ct_hora; 
 
-    // ASIGNACION FAMILIAR
     const af_valor_dia = (RMV / 30) * 0.10;
     const af_valor_hora = af_valor_dia / 8;
     const af = hijos ? (af_valor_hora * hN) : 0;
 
-    // CALCULOS
     const rb_p = hN * rbh;
     const e25_p = h25 * (jornal_hora_total * 1.25); 
     const e35_p = h35 * (jornal_hora_total * 1.35);
@@ -558,7 +616,6 @@ function calcularFila(tr) {
     const grati_total = hN * gh_hora;
     const cts_total = hN * ct_hora;
 
-    // Bono Beta (> 4 horas)
     let cB = 0; 
     let diasObj = {}; try { diasObj = JSON.parse(tr.querySelector('.val-json').value || '{}'); } catch(e){}
     for(let f in diasObj){
@@ -572,25 +629,16 @@ function calcularFila(tr) {
     const beta = cB * ((RMV * 0.30)/30); 
     const bet6 = grati_total * 0.06;
 
-    // TOTALES
     const base = rb_p + e25_p + e35_p + af + bono_nocturno;
-    
-    // DESCUENTO AFP: 0 si no esta en planilla
-    let afp = 0;
-    if(enPlanilla === 'SI') {
-        afp = base * (ps/100);
-    }
-
+    let afp = (enPlanilla === 'SI') ? base * (ps/100) : 0;
     const neto = base - afp + grati_total + cts_total + beta + bet6;
 
-    // VISUAL
     tr.querySelector(".lbl-rb").innerText = rbh.toFixed(4);
     tr.querySelector(".lbl-grati").innerText = gh_hora.toFixed(4);
     tr.querySelector(".lbl-cts").innerText = ct_hora.toFixed(4);
     tr.querySelector(".lbl-jornal-h").innerText = jornal_hora_total.toFixed(4);
     tr.querySelector(".txt-he25").innerText = decimalToTime(h25);
     tr.querySelector(".txt-he35").innerText = decimalToTime(h35);
-    
     tr.querySelector(".lbl-asig-fam").innerText = af.toFixed(2);
     tr.querySelector(".lbl-bnoct").innerText = decimalToTime(hNoct);
     tr.querySelector(".lbl-bet-6").innerText = bet6.toFixed(2);
@@ -598,7 +646,6 @@ function calcularFila(tr) {
     tr.querySelector(".lbl-descto").innerText = afp.toFixed(2);
     tr.querySelector(".lbl-neto").innerText = neto.toFixed(2);
 
-    // HIDDEN
     tr.querySelector(".val-base").value = base.toFixed(4);
     tr.querySelector(".val-afp").value = afp.toFixed(2);
     tr.querySelector(".val-neto").value = neto.toFixed(2);
@@ -611,28 +658,30 @@ function calcularFila(tr) {
 
 function recalcTotalGeneral(){
     let t=0;
-    document.querySelectorAll('.fila-nomina:not(.fila-oculta) .lbl-neto').forEach(e=>t+=parseFloat(e.innerText)||0);
-    document.getElementById('totalGeneral').innerText=t.toFixed(2);
+    document.querySelectorAll('.fila-nomina:not(.fila-oculta) .lbl-neto').forEach(e => {
+        // CORRECCIÓN SUMA CON COMAS
+        let valText = e.innerText.replace(/,/g, ''); 
+        t += parseFloat(valText) || 0;
+    });
+    document.getElementById('totalGeneral').innerText = t.toFixed(2);
 }
 
 // Helpers
 function getRangoActivo(){ const fi=document.getElementById('periodo_inicio').value, ff=document.getElementById('periodo_fin').value; return (fi&&ff&&fi<=ff)?{fi,ff}:null; }
 function toISODate(d){ const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,'0'), da=String(d.getDate()).padStart(2,'0'); return `${y}-${m}-${da}`; }
-function parseFechaFlexible(v){ if(!v)return null; if(v instanceof Date)return toISODate(v); if(typeof v==='number'){ const dt=new Date((v-25569)*86400000); return toISODate(new Date(dt.valueOf()+dt.getTimezoneOffset()*60000)); } const s=String(v).trim(); return /^\d{4}-\d{2}-\d{2}$/.test(s)?s:null; }
 function dentroDeRango(d,r){ return d>=r.fi && d<=r.ff; }
-function filtrarDiasPorRango(o,r){ const n={}; for(let k in o){ if(dentroDeRango(k,r))n[k]=o[k]; } return n; }
 function decimalToTime(d){ let s=Math.round(d*3600); return `${Math.floor(s/3600).toString().padStart(2,'0')}:${Math.floor((s%3600)/60).toString().padStart(2,'0')}`; }
 function parseTime(t){ if(!t)return 0; if(t.length===5)t+=":00"; let p=t.split(':'); return (parseInt(p[0])*3600)+(parseInt(p[1])*60)+(parseInt(p[2]||0)); }
 function redondearATiempoExacto(s){ return Math.round(s/300)*300; }
 function calculateNightSeconds(t1,t2){ if(t2<=t1)return 0; return Math.max(0,Math.min(t2,21600)-Math.max(t1,0)) + Math.max(0,Math.min(t2,86400)-Math.max(t1,79200)); }
 function pintarRangoActivo(){ const r=getRangoActivo(); document.getElementById('txtRangoActivo').innerHTML=r?`${r.fi} &#10132; ${r.ff}`:`<span class="text-danger">Inválido</span>`; }
 function recargarFiltros(){ const m=document.getElementById('mes_pago_sel').value, p=document.getElementById('periodo_pago_sel').value, fi=document.getElementById('periodo_inicio').value, ff=document.getElementById('periodo_fin').value; location.href=`?mes=${m}&periodo=${p}&fi=${fi}&ff=${ff}`; }
-function aplicarRangoYRecalcular(){ recalcularTodo(); pintarRangoActivo(); }
+
 function enviarNomina(st){
-    const r=getRangoActivo();
-    document.querySelectorAll('.fila-nomina').forEach(tr=>{ let o={};try{o=JSON.parse(tr.querySelector('.val-json').value)}catch(e){} tr.querySelector('.val-json').value=JSON.stringify(filtrarDiasPorRango(o,r)); });
     const fd=new FormData(document.getElementById('formNomina'));
-    fd.append('estado_pago',st); fd.append('mes_pago',document.getElementById('mes_pago_sel').value); fd.append('periodo_pago',document.getElementById('periodo_pago_sel').value);
+    fd.append('estado_pago',st); 
+    fd.append('mes_pago',document.getElementById('mes_pago_sel').value); 
+    fd.append('periodo_pago',document.getElementById('periodo_pago_sel').value);
     
     const btn = document.querySelector("button[onclick*='enviarNomina']");
     const old = btn.innerHTML;
@@ -646,27 +695,53 @@ function enviarNomina(st){
 }
 
 // Modales
-function abrirModalAsistencia(dni){ dniActivo=dni; document.getElementById('modalInfoTrabajador').innerText=asistenciaGlobal[dni].nombre; const r=getRangoActivo(); const b=document.getElementById('bodyModal'); b.innerHTML=""; const f=document.getElementById('fila-'+dni); let d={}; try{d=JSON.parse(f.querySelector('.val-json').value||'{}')}catch(e){} const k=Object.keys(d).sort(); if(k.length===0) b.innerHTML=`<tr><td colspan="6" class="text-center py-5">Sin registros.</td></tr>`;
-    k.forEach(fe=>{ let raw=(d[fe].raw||"").split(',').filter(x=>x); let h='<div class="tramos-container">'; if(raw.length===0)h+=genInp("08:00","17:00",true); else for(let i=0;i<raw.length;i+=2) h+=genInp(raw[i].substr(0,5),(raw[i+1]||"00:00").substr(0,5),i===0); h+='</div><button class="btn btn-link btn-sm p-0 text-success" onclick="addTramo(this)">+ Int</button>'; const tr=document.createElement('tr'); tr.className="text-center"; tr.innerHTML=`<td><span class="f-txt">${fe}</span></td><td class="text-start">${h}</td><td class="c-n"></td><td class="c-25"></td><td class="c-35"></td><td><button class="btn btn-sm text-danger" onclick="this.closest('tr').remove();sumM()"><i class="bi bi-trash"></i></button></td>`; b.appendChild(tr); recalcM(tr.querySelector('input')); }); sumM(); new bootstrap.Modal(document.getElementById('modalAsistencia')).show(); }
-function genInp(v1,v2,f){ return `<div class="tramo-input d-flex align-items-center gap-1 mb-1"><input type="time" class="time-field form-control form-control-sm" value="${v1}" onchange="recalcM(this)"><i class="bi bi-arrow-right small"></i><input type="time" class="time-field form-control form-control-sm" value="${v2}" onchange="recalcM(this)">${f?'':`<button class="btn btn-sm text-danger ms-1" onclick="this.parentElement.remove();sumM()">x</button>`}</div>`; }
-function addTramo(b){ const d=document.createElement('div'); d.innerHTML=genInp("00:00","00:00",false); b.previousElementSibling.appendChild(d.firstElementChild); }
-function agregarDiaModal(){ const r=getRangoActivo(); const f=prompt(`Fecha (${r.fi}-${r.ff}):`); if(!f||!dentroDeRango(f,r))return alert("Fecha inválida"); let ex=false; document.querySelectorAll('.f-txt').forEach(s=>{if(s.innerText==f)ex=true}); if(ex)return alert("Ya existe"); const b=document.getElementById('bodyModal'); if(b.querySelector('td[colspan]')) b.innerHTML=""; const tr=document.createElement('tr'); tr.className="text-center"; tr.innerHTML=`<td><span class="f-txt">${f}</span></td><td class="text-start"><div class="tramos-container">${genInp("08:00","17:00",true)}</div><button class="btn btn-link btn-sm p-0 text-success" onclick="addTramo(this)">+ Int</button></td><td class="c-n"></td><td class="c-25"></td><td class="c-35"></td><td><button class="btn btn-sm text-danger" onclick="this.closest('tr').remove();sumM()">x</button></td>`; b.appendChild(tr); recalcM(tr.querySelector('input')); }
-function guardarCambiosModal(){ const n={}, r=getRangoActivo(); document.querySelectorAll('#bodyModal tr').forEach(tr=>{ const f=tr.querySelector('.f-txt')?.innerText; if(f&&dentroDeRango(f,r)){ const t=[]; tr.querySelectorAll('input').forEach(i=>{ if(i.value){ let v=i.value; if(v.length===5)v+=":00"; t.push(v); } }); if(t.length>0 && t.length%2===0) n[f]={raw:t.join(',')}; } }); document.getElementById('fila-'+dniActivo).querySelector('.val-json').value=JSON.stringify(n); inyectarFilaEspecifica(dniActivo); bootstrap.Modal.getInstance(document.getElementById('modalAsistencia')).hide(); }
+function abrirModalAsistencia(dni){ 
+    dniActivo = dni; 
+    document.getElementById('modalInfoTrabajador').innerText = `${asistenciaGlobal[dni].nombre} (${dni})`;
+    const rango = getRangoActivo(); 
+    if(!rango) return alert("Rango inválido.");
+    const body = document.getElementById('bodyModal'); body.innerHTML = "";
+    const fila = document.getElementById('fila-'+dni);
+    let dias = {}; try{ dias = JSON.parse(fila.querySelector('.val-json').value || '{}'); } catch(e){}
+    const keys = Object.keys(dias).sort();
+    
+    if(keys.length === 0) {
+        body.innerHTML = `<tr><td colspan="6" class="text-center py-5 text-muted">Sin registros.</td></tr>`;
+    } else {
+        keys.forEach(f => {
+            let raw = (dias[f].raw || "").split(',').filter(x => x);
+            let html = '<div class="tramos-container d-flex flex-column gap-2">';
+            if(raw.length === 0) {
+                html += genInp("08:00", "17:00", true);
+            } else {
+                for(let i=0; i<raw.length; i+=2) {
+                    let t1 = raw[i] ? raw[i].substr(0,5) : "00:00";
+                    let t2 = raw[i+1] ? raw[i+1].substr(0,5) : "00:00";
+                    html += genInp(t1, t2, i===0);
+                }
+            }
+            html += '</div><button class="btn btn-link btn-sm p-0 text-success fw-bold text-decoration-none mt-1" onclick="addTramo(this)">+ Intervalo</button>';
+            const tr = document.createElement('tr'); tr.className = "text-center align-middle";
+            tr.innerHTML = `<td><span class="f-txt fw-bold">${f}</span></td><td class="text-start">${html}</td><td class="c-n fw-bold text-secondary"></td><td class="c-25 fw-bold text-warning"></td><td class="c-35 fw-bold text-danger"></td><td><button class="btn btn-sm text-danger" onclick="borrarFilaModal(this)"><i class="bi bi-trash"></i></button></td>`;
+            body.appendChild(tr);
+            recalcM(tr.querySelector('input')); 
+        });
+    }
+    sumM();
+    new bootstrap.Modal(document.getElementById('modalAsistencia')).show();
+}
+
+function genInp(v1, v2, esPrimero){
+    const btnBorrar = esPrimero ? '' : `<button class="btn btn-sm text-danger ms-1 border-0" onclick="removerTramo(this)"><i class="bi bi-x-circle-fill"></i></button>`;
+    return `<div class="tramo-input d-flex align-items-center gap-1"><input type="time" class="time-field form-control form-control-sm" value="${v1}" onchange="recalcM(this)"><i class="bi bi-arrow-right small text-muted"></i><input type="time" class="time-field form-control form-control-sm" value="${v2}" onchange="recalcM(this)">${btnBorrar}</div>`;
+}
+function addTramo(btn){ const d=document.createElement('div'); d.innerHTML=genInp("00:00","00:00",false); btn.previousElementSibling.appendChild(d.firstElementChild); }
+function removerTramo(btn){ const f=btn.closest('tr'); btn.closest('.tramo-input').remove(); recalcM(f.querySelector('input')); }
+function borrarFilaModal(btn) { btn.closest('tr').remove(); sumM(); }
+function agregarDiaModal(){ const r=getRangoActivo(); const f=prompt(`Fecha (${r.fi}-${r.ff}):`); if(!f||!dentroDeRango(f,r))return alert("Fecha inválida"); let ex=false; document.querySelectorAll('.f-txt').forEach(s=>{if(s.innerText==f)ex=true}); if(ex)return alert("Ya existe"); const b=document.getElementById('bodyModal'); if(b.querySelector('td[colspan]')) b.innerHTML=""; const tr=document.createElement('tr'); tr.className="text-center align-middle"; tr.innerHTML=`<td><span class="f-txt fw-bold">${f}</span></td><td class="text-start"><div class="tramos-container d-flex flex-column gap-2">${genInp("08:00","17:00",true)}</div><button class="btn btn-link btn-sm p-0 text-success fw-bold text-decoration-none mt-1" onclick="addTramo(this)">+ Intervalo</button></td><td class="c-n fw-bold text-secondary">08:00</td><td class="c-25 fw-bold text-warning">00:00</td><td class="c-35 fw-bold text-danger">00:00</td><td><button class="btn btn-sm btn-outline-danger border-0" onclick="borrarFilaModal(this)"><i class="bi bi-trash"></i></button></td>`; body.appendChild(tr); recalcM(tr.querySelector('input')); }
+function guardarCambiosModal(){ const n={}; const r=getRangoActivo(); document.querySelectorAll('#bodyModal tr').forEach(tr=>{ const f=tr.querySelector('.f-txt')?.innerText; if(f&&dentroDeRango(f,r)){ const t=[]; tr.querySelectorAll('input').forEach(i=>{ if(i.value){ let v=i.value; if(v.length===5)v+=":00"; t.push(v); } }); if(t.length>0 && t.length%2===0) n[f]={raw:t.join(',')}; } }); document.getElementById('fila-'+dniActivo).querySelector('.val-json').value=JSON.stringify(n); inyectarFilaEspecifica(dniActivo); bootstrap.Modal.getInstance(document.getElementById('modalAsistencia')).hide(); }
 function abrirModalCrearTrabajador(){ const k=Object.keys(datosDesconocidos)[0]; if(k){document.getElementById('new_dni').value=k; document.getElementById('new_nombre').value=datosDesconocidos[k];} new bootstrap.Modal(document.getElementById('modalCrearTrabajador')).show(); }
 function guardarTrabajadorFast(){ const d=document.getElementById('new_dni').value, n=document.getElementById('new_nombre').value; if(!d||!n)return alert("Faltan datos"); const fd=new FormData(); fd.append('accion','crear_rapido'); fd.append('dni',d); fd.append('nombre',n); fetch('controllers/trabajador_controller.php',{method:'POST',body:fd}).then(r=>r.json()).then(res=>{ if(res.success){ alert("Creado"); location.reload(); }else alert(res.message); }).catch(e=>alert("Error")); }
-
-function recalcM(el){
-    if(!el) return;
-    const tr=el.closest('tr'); let s=0;
-    tr.querySelectorAll('.tramo-input').forEach(d=>{
-        const i=d.querySelectorAll('input'); if(i.length==2){
-            const t1=parseTime(i[0].value), t2=parseTime(i[1].value); if(t2>t1) s+=(t2-t1);
-        }
-    });
-    let h=redondearATiempoExacto(s)/3600;
-    tr.querySelector('.c-n').innerText=decimalToTime(Math.min(h,8));
-    tr.querySelector('.c-25').innerText=decimalToTime(Math.min(Math.max(0,h-8),2));
-    tr.querySelector('.c-35').innerText=decimalToTime(Math.max(0,h-10));
-    sumM();
-}
+function recalcM(el){ if(!el)return; const tr=el.closest('tr'); let s=0; tr.querySelectorAll('.tramo-input').forEach(d=>{ const i=d.querySelectorAll('input'); if(i.length==2){ const t1=parseTime(i[0].value), t2=parseTime(i[1].value); if(t2>t1) s+=(t2-t1); } }); let h=redondearATiempoExacto(s)/3600; tr.querySelector('.c-n').innerText=decimalToTime(Math.min(h,8)); tr.querySelector('.c-25').innerText=decimalToTime(Math.min(Math.max(0,h-8),2)); tr.querySelector('.c-35').innerText=decimalToTime(Math.max(0,h-10)); sumM(); }
+function sumM(){ let n=0,e2=0,e3=0; document.querySelectorAll('#bodyModal tr').forEach(tr=>{ if(tr.querySelector('.c-n')){ n+=parseTime(tr.querySelector('.c-n').innerText)||0; e2+=parseTime(tr.querySelector('.c-25').innerText)||0; e3+=parseTime(tr.querySelector('.c-35').innerText)||0; } }); document.getElementById('footerModal').innerHTML=`<tr><td colspan="2" class="text-end pe-3 text-uppercase text-muted">Totales:</td><td class="bg-light fw-bold">${decimalToTime(n/3600)}</td><td class="bg-warning bg-opacity-25 fw-bold">${decimalToTime(e2/3600)}</td><td class="bg-danger bg-opacity-25 fw-bold">${decimalToTime(e3/3600)}</td><td></td></tr>`; }
 </script>

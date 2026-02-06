@@ -166,6 +166,11 @@ if($view == 'inicio' && isset($conexion)) {
                 <i class="bi bi-pie-chart-fill"></i> Reportes
             </a>
 
+            <div class="small text-uppercase text-white-50 mt-4 mb-2 px-3" style="font-size: 0.65rem; letter-spacing: 1px;">Costos</div>
+            <a href="index.php?view=reporteria" class="nav-link <?= $view=='reporteria'?'active':'' ?>">
+                <i class="bi bi-graph-up-arrow"></i> Producción
+            </a>
+
             <div class="small text-uppercase text-white-50 mt-4 mb-2 px-3" style="font-size: 0.65rem; letter-spacing: 1px;">Sistema</div>
             <a href="index.php?view=tarifas" class="nav-link <?= $view=='tarifas'?'active':'' ?>">
                 <i class="bi bi-tags-fill"></i> Tarifas
@@ -213,6 +218,7 @@ if($view == 'inicio' && isset($conexion)) {
                     case 'procesar':       include 'views/procesar_nomina.php'; break;
                     case 'gestion':        include 'views/gestion_nominas.php'; break;
                     case 'resumen_pagos':  include 'views/resumen_pagos.php'; break;
+                    case 'reporteria':     include 'views/reporteria_produccion.php'; break; // NUEVA VISTA
                     case 'tarifas':        include 'views/categorias.php'; break;
                     case 'configuracion':  include 'views/configuracion.php'; break;
                     case 'editar':         include 'views/editar_trabajador.php'; break;

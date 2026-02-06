@@ -8,18 +8,12 @@ $root = $_SERVER['DOCUMENT_ROOT'];
 if(file_exists($root.'/config/db.php')) {
     include_once $root.'/config/db.php';
 } else {
-    include_once '../config/db.php'; // Fallback
+    include_once '../config/db.php'; 
 }
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405);
     die("Error: Método no permitido.");
-}
-
-// Validar conexión
-if (!$conexion) {
-    http_response_code(500);
-    die("Error de conexión a BD: " . mysqli_connect_error());
 }
 
 // Recibir datos globales
@@ -35,64 +29,62 @@ if (isset($_POST['trab']) && is_array($_POST['trab'])) {
     $errores = 0;
     $ultimo_error = "";
 
-    // Preparamos la sentencia una sola vez para eficiencia y seguridad
-    // Aseguramos que los nombres de columnas coincidan con tu tabla
-    $stmt = $conexion->prepare("
-        INSERT INTO nomina_procesada 
-        (id_trabajador, mes_pago, anio_pago, periodo_pago, fecha_registro, 
-         dias_trabajados, horas_normales_total, horas_25_total, horas_35_total, horas_nocturnas_total,
-         monto_base_afp, monto_afp, monto_neto_final, 
-         bono_beta, bono_extra_6, bono_nocturno,
-         estado, detalle_horarios)
-        VALUES 
-        (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON DUPLICATE KEY UPDATE 
-        dias_trabajados = VALUES(dias_trabajados),
-        horas_normales_total = VALUES(horas_normales_total),
-        horas_25_total = VALUES(horas_25_total),
-        horas_35_total = VALUES(horas_35_total),
-        horas_nocturnas_total = VALUES(horas_nocturnas_total),
-        monto_base_afp = VALUES(monto_base_afp),
-        monto_afp = VALUES(monto_afp),
-        monto_neto_final = VALUES(monto_neto_final),
-        bono_beta = VALUES(bono_beta),
-        bono_extra_6 = VALUES(bono_extra_6),
-        bono_nocturno = VALUES(bono_nocturno),
-        estado = VALUES(estado),
-        detalle_horarios = VALUES(detalle_horarios),
-        fecha_registro = VALUES(fecha_registro)
-    ");
+    // NOTA: Aquí usamos 'bono_extra_6' que es como se llama en tu Base de Datos
+    $sql = "INSERT INTO nomina_procesada 
+            (id_trabajador, mes_pago, anio_pago, periodo_pago, fecha_registro, 
+             dias_trabajados, horas_normales_total, horas_25_total, horas_35_total, horas_nocturnas_total,
+             monto_base_afp, monto_afp, monto_neto_final, 
+             bono_beta, bono_extra_6, bono_nocturno,
+             estado, detalle_horarios)
+            VALUES 
+            (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE 
+            dias_trabajados = VALUES(dias_trabajados),
+            horas_normales_total = VALUES(horas_normales_total),
+            horas_25_total = VALUES(horas_25_total),
+            horas_35_total = VALUES(horas_35_total),
+            horas_nocturnas_total = VALUES(horas_nocturnas_total),
+            monto_base_afp = VALUES(monto_base_afp),
+            monto_afp = VALUES(monto_afp),
+            monto_neto_final = VALUES(monto_neto_final),
+            bono_beta = VALUES(bono_beta),
+            bono_extra_6 = VALUES(bono_extra_6),
+            bono_nocturno = VALUES(bono_nocturno),
+            estado = VALUES(estado),
+            detalle_horarios = VALUES(detalle_horarios),
+            fecha_registro = VALUES(fecha_registro)";
+
+    $stmt = $conexion->prepare($sql);
 
     if (!$stmt) {
-        die("Error preparando SQL: " . $conexion->error);
+        die("Error SQL: " . $conexion->error);
     }
 
     foreach ($_POST['trab'] as $t) {
         // Datos básicos
         $id_trabajador = $t['id'];
-        $dias = (int)$t['dias'];
+        $dias = (int)($t['dias'] ?? 0);
         
-        // Si tiene 0 días y no queremos guardar vacíos, podríamos saltar, 
-        // pero mejor guardamos todo para mantener el registro de que "no trabajó".
-
-        // Horas (Texto)
+        // Horas
         $hn = $t['horas_n'] ?? '00:00'; 
         $h25 = $t['horas_25'] ?? '00:00';
         $h35 = $t['horas_35'] ?? '00:00';
         $hNoct = $t['horas_noct'] ?? '00:00';
         
-        // Montos (Floats)
+        // Montos
         $base_afp = floatval($t['base_afp'] ?? 0);
         $afp = floatval($t['afp_monto'] ?? 0);
         $neto = floatval($t['neto'] ?? 0);
         $bono_beta = floatval($t['bono_beta'] ?? 0);
-        $bono_6 = floatval($t['bono_6'] ?? 0);
+        
+        // Aquí está la corrección clave: Recibimos 'bono_6' del HTML, guardamos en 'bono_extra_6'
+        $bono_6 = floatval($t['bono_6'] ?? 0); 
         $bono_nocturno = floatval($t['bono_nocturno'] ?? 0);
         
         // JSON
         $json_horarios = $t['json_horarios'] ?? '{}';
 
-        // Bind Parameters (i=int, s=string, d=double)
+        // Bind Parameters
         $stmt->bind_param("iiississssddddddss", 
             $id_trabajador, $mes, $anio, $periodo, $fecha_registro,
             $dias, $hn, $h25, $h35, $hNoct,
@@ -112,12 +104,12 @@ if (isset($_POST['trab']) && is_array($_POST['trab'])) {
     $stmt->close();
     
     if ($errores > 0) {
-        echo "Advertencia: Se guardaron $guardados registros, pero fallaron $errores. Último error: $ultimo_error";
+        echo "Advertencia: Guardados $guardados. Fallidos $errores. Error: $ultimo_error";
     } else {
-        echo "ÉXITO: Se guardaron $guardados registros correctamente.";
+        echo "ÉXITO: Se guardaron $guardados registros.";
     }
 
 } else {
-    echo "Error: No se recibieron datos de trabajadores (Array 'trab' vacío).";
+    echo "Error: No llegaron datos del formulario.";
 }
 ?>
