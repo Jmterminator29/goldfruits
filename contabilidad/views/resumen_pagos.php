@@ -63,7 +63,7 @@ if(mysqli_num_rows($res) > 0) {
         $dias_total = 0; $db_beta = 0; $db_bono6 = 0; $db_noct = 0; $db_afp = 0;
         $neto_1ra = 0; $neto_2da = 0;
 
-        // Si hay nóminas, sumamos
+        // Si hay nóminas, sumamos los valores REALES guardados en BD
         if(mysqli_num_rows($q_nom) > 0) {
             while($n = mysqli_fetch_assoc($q_nom)) {
                 $arr_hn[] = $n['horas_normales_total'];
@@ -88,24 +88,37 @@ if(mysqli_num_rows($res) > 0) {
         $dec_h35 = sumar_tiempos_db($arr_h35);
         $dec_noct = sumar_tiempos_db($arr_hNoct);
         
-        // Cálculos Unitarios
+        // --- CÁLCULOS CORREGIDOS ---
+
+        // 1. Tasas Horarias
         $rbh = ((float)$row['sueldo_base'] / 30) / 8;
         $gh = $rbh * 0.1666; $ch = $rbh * 0.0972; 
         $rd_h = $rbh + $gh + $ch;
 
-        // Cálculos Monetarios
-        $pago_base = $dec_hn * $rd_h;
+        // 2. Extras (Calculadas estándar)
         $rem_25 = $dec_h25 * $rd_h * 1.25;
         $rem_35 = $dec_h35 * $rd_h * 1.35;
         
-        // Asignación Familiar
-        $af_hora = ($rmv / 30 * 0.10) / 8;
-        $asig_fam = ($row['tiene_hijos'] == 1) ? ($af_hora * $dec_hn) : 0;
+        // 3. Asignación Familiar (CORREGIDO: Por DÍAS, no por horas)
+        $af_diaria = ($rmv * 0.10) / 30;
+        $asig_fam = ($row['tiene_hijos'] == 1) ? ($af_diaria * $dias_total) : 0;
 
-        // Total Remuneración Bruta
-        $total_rem = $pago_base + $rem_25 + $rem_35 + $db_noct + $db_beta + $db_bono6 + $asig_fam;
+        // 4. Cálculo Inverso para "Pago Base" (Gross Up Check)
+        // El Neto en BD es la verdad absoluta. Reconstruimos hacia atrás.
+        // Ecuación: NetoDB + AFP_DB = Ingresos Totales
+        $ingresos_totales_reales = ($neto_1ra + $neto_2da) + $db_afp;
         
-        // Neto a Pagar
+        // Sumamos los conceptos conocidos (Extras + Bonos + AsigFam)
+        $conceptos_adicionales = $rem_25 + $rem_35 + $db_noct + $db_beta + $db_bono6 + $asig_fam;
+        
+        // El "Pago Base" (Jornal Básico + Grati + CTS) debe ser la diferencia.
+        // Esto absorbe automáticamente el ajuste de los trabajadores FIJOS.
+        $pago_base = $ingresos_totales_reales - $conceptos_adicionales;
+        
+        // Total Remuneración Bruta Visual (Debe coincidir con Ingresos Totales Reales)
+        $total_rem = $pago_base + $conceptos_adicionales;
+        
+        // Neto a Pagar (Para visualización)
         $neto_final = $total_rem - $db_afp;
 
         $fila_data = [
@@ -129,7 +142,7 @@ if(mysqli_num_rows($res) > 0) {
             "h_total" => formato_hora_visual($dec_hn + $dec_h25 + $dec_h35),
             "dec_total" => (float)number_format($dec_hn + $dec_h25 + $dec_h35 + $dec_noct, 2),
             
-            // Montos
+            // Montos (Ajustados al centavo)
             "pago_base" => $pago_base,
             "rem_25" => $rem_25,
             "rem_35" => $rem_35,
@@ -141,7 +154,8 @@ if(mysqli_num_rows($res) > 0) {
             
             "sp1" => "", "sp2" => "", "sp3" => "",
             
-            // Desglose (Informativo Excel)
+            // Desglose Informativo para Excel (Aprox)
+            // Nota: Si es fijo, estos valores teóricos diferirán del pago_base real ajustado
             "ph_base" => (float)number_format($dec_hn * $rbh, 2),
             "ph_grati" => (float)number_format($dec_hn * $gh, 2),
             "ph_cts" => (float)number_format($dec_hn * $ch, 2),
@@ -254,7 +268,7 @@ if(mysqli_num_rows($res) > 0) {
                 <th rowspan="2" style="background:#145A32">Neto S/</th>
             </tr>
             <tr>
-                <th style="background:#2E7D32">Hrs</th><th style="background:#2E7D32">Monto</th>
+                <th style="background:#2E7D32">Hrs</th><th style="background:#2E7D32">Monto (Base)</th>
                 <th style="background:#FBC02D">25%</th><th style="background:#FBC02D">35%</th>
                 <th style="background:#546E7A">Beta</th><th style="background:#546E7A">Noct</th><th style="background:#546E7A">6%</th>
             </tr>
@@ -289,7 +303,6 @@ if(mysqli_num_rows($res) > 0) {
 <script src="https://cdnjs.cloudflare.com/ajax/libs/FileSaver.js/2.0.5/FileSaver.min.js"></script>
 
 <script>
-    // Al cargar la página, ejecutar el filtro inicial (Ocultar ceros)
     document.addEventListener('DOMContentLoaded', function() {
         toggleCeros();
     });
@@ -305,12 +318,9 @@ if(mysqli_num_rows($res) > 0) {
 
     async function generarExcelDetallado() {
         const wb = new ExcelJS.Workbook();
-        
-        // Obtener estado del switch para filtrar exportación
         const mostrarCeros = document.getElementById('chkVerCeros').checked;
 
         const crearHoja = (nombreHoja, datosOriginales) => {
-            // FILTRADO INTELIGENTE PARA EXCEL
             let datos = datosOriginales;
             if (!mostrarCeros) {
                 datos = datosOriginales.filter(d => parseFloat(d.neto) > 0);
@@ -403,7 +413,6 @@ if(mysqli_num_rows($res) > 0) {
         
         let raw = [...<?= json_encode($lista_planilla) ?>, ...<?= json_encode($lista_sin_planilla) ?>];
         
-        // FILTRADO INTELIGENTE
         if (!mostrarCeros) {
             raw = raw.filter(r => r.total_mes > 0);
         }

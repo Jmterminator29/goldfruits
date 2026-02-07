@@ -1,347 +1,313 @@
 <?php
-require_once '../includes/auth_admin.php';
+// 1. SEGURIDAD Y CONEXIÓN
+require_once '../includes/auth_admin.php'; 
 require_once '../includes/db_connect.php';
 
-// --- CONFIGURACIÓN DE PAGINACIÓN ---
-$registros_por_pagina = 10;
-$pagina_actual = isset($_GET['pagina']) ? (int)$_GET['pagina'] : 1;
-if ($pagina_actual < 1) $pagina_actual = 1;
-$offset = ($pagina_actual - 1) * $registros_por_pagina;
+// 2. RECUPERAR NOMBRE (Lógica que ya funciona)
+$nombre_usuario = "Administrador";
 
-// --- BÚSQUEDA ---
-$busqueda = isset($_GET['q']) ? trim($_GET['q']) : '';
-$condicion_sql = "";
-$params_sql = [];
+// A) Intentar leer de la sesión
+if (!empty($_SESSION['user_nombre'])) {
+    $nombre_usuario = $_SESSION['user_nombre'];
+} elseif (!empty($_SESSION['nombres'])) {
+    $nombre_usuario = $_SESSION['nombres'];
+} elseif (!empty($_SESSION['nombre_completo'])) {
+    $nombre_usuario = $_SESSION['nombre_completo'];
+} 
 
-if (!empty($busqueda)) {
-    $condicion_sql = " WHERE (
-        a.codigo_unico LIKE ? OR 
-        a.proveedor LIKE ? OR 
-        u.nombre_completo LIKE ?
-    )";
-    $term = "%" . $busqueda . "%";
-    $params_sql = [$term, $term, $term];
+// B) Si falla, buscar en BD
+$id_user = $_SESSION['user_id'] ?? $_SESSION['id_usuario'] ?? $_SESSION['id'] ?? null;
+
+if ($nombre_usuario === "Administrador" && $id_user) {
+    try {
+        $stmt = $conn->prepare("SELECT * FROM usuarios WHERE id = ? LIMIT 1");
+        $stmt->execute([$id_user]);
+        $datos = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if ($datos) {
+            if (!empty($datos['nombre_completo'])) {
+                $nombre_usuario = $datos['nombre_completo'];
+            } elseif (!empty($datos['nombres'])) {
+                $nombre_usuario = $datos['nombres'];
+                if (!empty($datos['apellidos'])) {
+                    $nombre_usuario .= ' ' . explode(' ', $datos['apellidos'])[0];
+                }
+            } elseif (!empty($datos['usuario'])) {
+                $nombre_usuario = $datos['usuario'];
+            }
+            $_SESSION['user_nombre'] = $nombre_usuario;
+        }
+    } catch (Exception $e) {}
 }
 
-// 1. CONSULTA DE TOTALES (KPIs Globales y Paginador)
-// Sumamos Fruta por un lado y TODOS los Gastos por otro
-$sqlCount = "
-    SELECT 
-        COUNT(*) as total_ops,
-        COALESCE(SUM(a.total_kilos_neto), 0) as kpi_kilos,
-        COALESCE(SUM(a.importe_total_fruta), 0) as kpi_fruta,
-        COALESCE(SUM(
-            COALESCE(a.precio_flete,0) + 
-            COALESCE(a.subtotal_cosecha,0) + 
-            COALESCE(a.subtotal_cargadores,0) + 
-            COALESCE(a.subtotal_inspectores,0) + 
-            COALESCE(a.viaticos,0) + 
-            COALESCE(a.gastos_operativos,0)
-        ), 0) as kpi_gastos
-    FROM acopios_cabecera a
-    LEFT JOIN usuarios u ON a.usuario_id = u.id
-    $condicion_sql
-";
-$stmtCount = $conn->prepare($sqlCount);
-$stmtCount->execute($params_sql);
-$totales = $stmtCount->fetch(PDO::FETCH_ASSOC);
-
-$total_registros = $totales['total_ops'];
-$total_paginas = ceil($total_registros / $registros_por_pagina);
-
-$kpi_kilos = $totales['kpi_kilos'];
-$kpi_fruta = $totales['kpi_fruta'];
-$kpi_gastos = $totales['kpi_gastos'];
-$kpi_inversion_total = $kpi_fruta + $kpi_gastos; // La suma real
-
-// 2. CONSULTA LIMITADA (Para la tabla)
-// Calculamos 'total_gastos' fila por fila para mostrarlo en la tabla
-$sqlData = "
-    SELECT 
-        a.id, 
-        a.codigo_unico,
-        a.fecha_registro, 
-        a.estado, 
-        a.total_kilos_neto, 
-        a.importe_total_fruta,
-        (
-            COALESCE(a.precio_flete,0) + 
-            COALESCE(a.subtotal_cosecha,0) + 
-            COALESCE(a.subtotal_cargadores,0) + 
-            COALESCE(a.subtotal_inspectores,0) + 
-            COALESCE(a.viaticos,0) + 
-            COALESCE(a.gastos_operativos,0)
-        ) as total_gastos,
-        u.nombre_completo as autor,
-        a.proveedor as proveedor_directo,
-        (
-            SELECT GROUP_CONCAT(DISTINCT p.nombre SEPARATOR ', ')
-            FROM acopios_origenes ao
-            JOIN proveedores p ON p.id = ao.proveedor_id
-            WHERE ao.acopio_id = a.id
-        ) as proveedores_detalle
-    FROM acopios_cabecera a
-    LEFT JOIN usuarios u ON a.usuario_id = u.id
-    $condicion_sql
-    ORDER BY a.fecha_registro DESC
-    LIMIT $registros_por_pagina OFFSET $offset
-";
-
-$stmtData = $conn->prepare($sqlData);
-$stmtData->execute($params_sql);
-$solicitudes = $stmtData->fetchAll(PDO::FETCH_ASSOC);
+$nombre_usuario = strtoupper($nombre_usuario);
 ?>
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
-    <title>Panel Gerencial | GoldFruits</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Panel General | Gold Fruits</title>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+
     <style>
+        /* --- ESTILOS VISUALES PREMIUM --- */
         :root {
-            --bg: #f8fafc;
-            --surface: #ffffff;
-            --primary: #0f172a;
-            --accent: #f59e0b;
-            --text: #334155;
-            --text-light: #64748b;
-            --success: #10b981;
-            --danger: #ef4444;
-            --border: #e2e8f0;
+            --gf-primary: #1b5e20;   /* Verde Institucional */
+            --gf-dark: #0f3d14;      /* Verde Profundo */
+            --gf-gold: #fbc02d;      /* Dorado Acento */
         }
 
-        * { box-sizing: border-box; }
-        body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); margin: 0; padding-bottom: 60px; font-size: 14px; }
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--gf-dark);
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(251, 192, 45, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(27, 94, 32, 0.2) 0px, transparent 50%),
+                url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+            color: #333;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
 
-        /* NAVBAR */
-        .navbar { background: var(--primary); color: white; padding: 15px 25px; position: sticky; top: 0; z-index: 100; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 4px 20px -5px rgba(0,0,0,0.2); }
-        .brand { font-weight: 800; font-size: 1.2rem; display: flex; align-items: center; gap: 8px; }
-        .brand span { color: var(--accent); }
-        .btn-logout { background: rgba(255,255,255,0.1); color: white; text-decoration: none; padding: 8px 16px; border-radius: 8px; font-weight: 600; font-size: 0.85rem; transition: 0.2s; border: 1px solid rgba(255,255,255,0.1); }
-        .btn-logout:hover { background: rgba(255,255,255,0.2); }
+        /* NAVBAR REDISEÑADO */
+        .app-bar {
+            background: rgba(15, 61, 20, 0.9); /* Un poco más opaco */
+            backdrop-filter: blur(15px);
+            -webkit-backdrop-filter: blur(15px);
+            padding: 12px 30px; /* Más padding horizontal */
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            border-bottom: 1px solid rgba(255,255,255,0.15);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 30px rgba(0,0,0,0.3);
+            height: 85px; /* Altura fija para acomodar el logo grande */
+        }
 
-        .container { max-width: 1300px; margin: 0 auto; padding: 25px; }
+        .main-logo { 
+            height: 75px; /* MUCHO MÁS GRANDE */
+            width: auto; 
+            filter: drop-shadow(0 4px 8px rgba(0,0,0,0.4)); 
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .main-logo:hover { transform: scale(1.08); }
+        
+        /* Contenedor de acciones derecha (Usuario + Logout) */
+        .navbar-actions { display: flex; align-items: center; gap: 15px; }
 
-        /* KPIs */
-        .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; margin-bottom: 30px; }
-        .kpi-card { background: var(--surface); padding: 20px; border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 4px 6px -2px rgba(0,0,0,0.03); }
-        .kpi-label { font-size: 0.7rem; text-transform: uppercase; color: var(--text-light); font-weight: 700; letter-spacing: 0.5px; display: block; margin-bottom: 8px; }
-        .kpi-value { font-size: 1.4rem; font-weight: 800; color: var(--primary); }
-        .kpi-value.gold { color: var(--accent); }
-        .kpi-value.red { color: var(--danger); }
-        .kpi-value.green { color: var(--success); }
+        /* Insignia de Usuario Glass */
+        .user-glass-badge {
+            background: rgba(255, 255, 255, 0.12);
+            backdrop-filter: blur(5px);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            padding: 10px 20px;
+            border-radius: 30px;
+            font-weight: 700;
+            color: white;
+            display: flex; align-items: center; gap: 10px;
+            box-shadow: inset 0 0 15px rgba(255,255,255,0.05);
+            letter-spacing: 0.5px;
+        }
+        .user-icon-gold { color: var(--gf-gold); font-size: 1.4rem; }
 
-        /* TOOLBAR */
-        .toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; gap: 15px; flex-wrap: wrap; }
-        .search-form { display: flex; gap: 10px; flex: 1; max-width: 500px; }
-        .search-input { width: 100%; padding: 10px 15px; border-radius: 8px; border: 1px solid var(--border); outline: none; font-size: 0.95rem; }
-        .search-input:focus { border-color: var(--accent); }
-        .btn-search { background: var(--primary); color: white; border: none; padding: 0 20px; border-radius: 8px; font-weight: 600; cursor: pointer; }
-        .btn-reset { background: white; color: var(--text-light); border: 1px solid var(--border); padding: 0 15px; border-radius: 8px; text-decoration: none; display: flex; align-items: center; font-weight: 600; }
+        /* Botón Logout Glass */
+        .btn-glass-logout {
+             background: rgba(211, 47, 47, 0.2);
+             backdrop-filter: blur(5px);
+             border: 1px solid rgba(211, 47, 47, 0.5);
+             color: rgba(255,255,255,0.95);
+             padding: 10px 20px;
+             border-radius: 30px;
+             text-decoration: none;
+             transition: all 0.3s ease;
+             display: flex; align-items: center; gap: 8px;
+             font-weight: 700;
+             font-size: 1.1rem;
+        }
+        .btn-glass-logout:hover {
+            background: rgba(211, 47, 47, 0.85);
+            border-color: rgba(211, 47, 47, 1);
+            color: white;
+            transform: translateY(-3px);
+            box-shadow: 0 5px 20px rgba(211, 47, 47, 0.4);
+        }
 
-        /* TABLA */
-        .table-responsive { background: var(--surface); border-radius: 12px; border: 1px solid var(--border); overflow: hidden; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.03); }
-        table { width: 100%; border-collapse: collapse; text-align: left; }
-        thead { background: #f1f5f9; border-bottom: 2px solid var(--border); }
-        th { padding: 16px; font-weight: 700; color: var(--text-light); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.5px; }
-        td { padding: 16px; border-bottom: 1px solid var(--border); vertical-align: middle; color: var(--text); }
-        tr:last-child td { border-bottom: none; }
-        tr:hover { background: #f8fafc; }
 
-        /* CELDAS */
-        .cell-code { font-family: 'Consolas', monospace; font-weight: 700; color: var(--text-light); font-size: 0.85rem; }
-        .cell-date { font-size: 0.8rem; color: #94a3b8; display: block; margin-top: 2px; }
-        .cell-prov { font-weight: 700; color: var(--primary); font-size: 0.95rem; }
-        .cell-user { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; font-weight: 500; background: #f1f5f9; padding: 4px 8px; border-radius: 6px; }
-        .cell-kilo { font-weight: 700; font-size: 0.95rem; }
-        .cell-money { font-weight: 700; color: var(--primary); font-size: 0.95rem; }
-        .cell-gastos { font-weight: 600; color: var(--danger); font-size: 0.9rem; }
+        /* CONTENEDOR PRINCIPAL */
+        .main-container {
+            flex: 1;
+            padding: 50px 20px;
+            max-width: 1100px;
+            margin: 0 auto;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
 
-        /* BADGES */
-        .badge { padding: 4px 10px; border-radius: 20px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; display: inline-block; }
-        .badge.abierto { background: #dcfce7; color: #15803d; }
-        .badge.terminado { background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1; }
+        .welcome-text {
+            color: white;
+            text-align: center;
+            margin-bottom: 50px;
+            text-shadow: 0 2px 15px rgba(0,0,0,0.6);
+        }
+        .welcome-title { font-weight: 900; font-size: 2.5rem; margin-bottom: 5px; color: var(--gf-gold); letter-spacing: 1px; }
+        .welcome-subtitle { font-weight: 400; opacity: 0.9; font-size: 1.2rem; letter-spacing: 0.5px; }
 
-        /* ACCIONES */
-        .btn-group { display: flex; gap: 8px; justify-content: flex-end; }
-        .action-btn { text-decoration: none; padding: 6px 12px; border-radius: 6px; font-weight: 600; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 5px; transition: 0.2s; }
-        .btn-ver { background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
-        .btn-cerrar { background: #fef2f2; color: #dc2626; border: 1px solid #fecaca; }
-        .btn-abrir { background: #f0fdf4; color: #16a34a; border: 1px solid #bbf7d0; }
+        /* TARJETAS DE MÓDULOS */
+        .module-card {
+            background: rgba(255, 255, 255, 0.93);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            border-radius: 28px;
+            padding: 40px 30px;
+            text-align: center;
+            box-shadow: 0 20px 40px -10px rgba(0, 0, 0, 0.5);
+            transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            cursor: pointer;
+            text-decoration: none;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: var(--gf-dark);
+            height: 100%;
+            position: relative;
+            overflow: hidden;
+        }
 
-        /* PAGINACIÓN */
-        .pagination { display: flex; justify-content: center; gap: 5px; margin-top: 25px; }
-        .page-link { padding: 8px 14px; background: white; border: 1px solid var(--border); color: var(--text); text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 0.9rem; transition: 0.2s; }
-        .page-link:hover { background: #f1f5f9; border-color: #cbd5e1; }
-        .page-link.active { background: var(--primary); color: white; border-color: var(--primary); }
-        .page-link.disabled { opacity: 0.5; pointer-events: none; }
+        .module-card:hover {
+            transform: translateY(-12px) scale(1.03);
+            box-shadow: 0 30px 60px -12px rgba(0, 0, 0, 0.6);
+            border-color: var(--gf-gold);
+            background: rgba(255, 255, 255, 1);
+        }
 
-        /* MOVIL */
+        .icon-wrapper {
+            width: 90px; height: 90px;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 3rem;
+            margin-bottom: 25px;
+            transition: transform 0.4s ease;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+        }
+        .module-card:hover .icon-wrapper { transform: scale(1.15) rotate(8deg); }
+
+        /* Colores Específicos */
+        .card-acopio .icon-wrapper { background: #e8f5e9; color: var(--gf-primary); border: 3px solid #c8e6c9; }
+        .card-nomina .icon-wrapper { background: #fffde7; color: #f57f17; border: 3px solid #fff9c4; }
+        .card-config .icon-wrapper { background: #f3e5f5; color: #7b1fa2; border: 3px solid #e1bee7; }
+
+        .module-title { font-size: 1.5rem; font-weight: 800; margin-bottom: 12px; letter-spacing: 0.5px; }
+        .module-desc { font-size: 1rem; color: #555; line-height: 1.5; font-weight: 500; }
+
+        /* --- MÓVIL OPTIMIZADO --- */
         @media (max-width: 768px) {
-            .navbar { padding: 15px; }
-            .container { padding: 15px; }
-            .kpi-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
-            thead { display: none; }
-            .table-responsive { background: transparent; border: none; box-shadow: none; }
-            tr { background: white; display: block; margin-bottom: 15px; border-radius: 12px; box-shadow: 0 4px 10px -2px rgba(0,0,0,0.05); border: 1px solid var(--border); padding: 15px; position: relative; }
-            td { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px dashed #f1f5f9; text-align: right; }
-            td:last-child { border-bottom: none; padding-top: 15px; margin-top: 5px; border-top: 1px solid var(--border); display: block; }
-            td::before { content: attr(data-label); font-weight: 700; color: #94a3b8; font-size: 0.75rem; text-transform: uppercase; float: left; }
-            .cell-prov { font-size: 1.1rem; color: var(--primary); }
-            .btn-group { justify-content: stretch; }
-            .action-btn { flex: 1; justify-content: center; padding: 10px; }
+            .app-bar { padding: 10px 15px; height: 70px; }
+            .main-logo { height: 55px; } /* Logo grande también en móvil */
+            .navbar-actions { gap: 8px; }
+            .user-glass-badge { padding: 6px 12px; font-size: 0.9rem; }
+            .user-icon-gold { font-size: 1.1rem; }
+            .btn-glass-logout { padding: 8px; font-size: 1.2rem; border-radius: 50%; width: 40px; height: 40px; justify-content: center; }
+            .btn-glass-logout span { display: none; } /* Ocultar texto "Salir" en móvil */
+            
+            .welcome-title { font-size: 1.8rem; }
+            .main-container { padding-top: 30px; justify-content: flex-start; }
+
+            .module-card {
+                flex-direction: row; text-align: left; padding: 25px 20px;
+                min-height: auto; gap: 20px; align-items: center; justify-content: flex-start;
+                border-radius: 20px;
+            }
+            .icon-wrapper { width: 65px; height: 65px; font-size: 2.2rem; margin-bottom: 0; flex-shrink: 0; border-width: 2px; }
+            .module-title { font-size: 1.3rem; margin-bottom: 4px; }
+            .module-desc { font-size: 0.9rem; margin: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+            
+            .module-card::after {
+                content: '\F285'; font-family: 'bootstrap-icons';
+                margin-left: auto; color: var(--gf-gold); font-size: 1.5rem; font-weight: bold;
+            }
         }
     </style>
 </head>
 <body>
 
-    <div class="navbar">
-        <div class="brand">🥑 GoldFruits <span>Admin</span></div>
-        <a href="../logout.php" class="btn-logout">Salir</a>
-    </div>
-
-    <div class="container">
+    <div class="app-bar animate__animated animate__fadeInDown">
+        <img src="https://i.ibb.co/KzVLFpSV/Gemini-Generated-Image-45ambn45ambn45am-removebg-preview-2.png" alt="Gold Fruits" class="main-logo">
         
-        <div class="kpi-grid">
-            <div class="kpi-card">
-                <span class="kpi-label">Kilos Netos</span>
-                <span class="kpi-value"><?php echo number_format($kpi_kilos, 2); ?></span>
+        <div class="navbar-actions">
+            <div class="user-glass-badge">
+                <i class="bi bi-person-circle user-icon-gold"></i>
+                <span class="d-none d-sm-block"><?= htmlspecialchars($nombre_usuario) ?></span>
             </div>
-            <div class="kpi-card">
-                <span class="kpi-label">Costo Fruta (S/)</span>
-                <span class="kpi-value"><?php echo number_format($kpi_fruta, 2); ?></span>
-            </div>
-            <div class="kpi-card">
-                <span class="kpi-label">Gastos Op. (S/)</span>
-                <span class="kpi-value red"><?php echo number_format($kpi_gastos, 2); ?></span>
-            </div>
-            <div class="kpi-card">
-                <span class="kpi-label">Inversión Total (S/)</span>
-                <span class="kpi-value gold"><?php echo number_format($kpi_inversion_total, 2); ?></span>
-            </div>
+
+            <a href="../logout.php" class="btn-glass-logout" title="Cerrar Sesión">
+                <i class="bi bi-box-arrow-right"></i>
+                <span class="d-none d-md-block">Salir</span>
+            </a>
         </div>
-
-        <div class="toolbar">
-            <form class="search-form" method="GET">
-                <input type="text" name="q" class="search-input" placeholder="Buscar proveedor, código..." value="<?php echo htmlspecialchars($busqueda); ?>">
-                <button type="submit" class="btn-search">🔍</button>
-            </form>
-            <?php if($busqueda): ?>
-                <a href="admin_panel.php" class="btn-reset">× Limpiar</a>
-            <?php endif; ?>
-        </div>
-
-        <div class="table-responsive">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Operación</th>
-                        <th>Proveedor</th>
-                        <th>Neto</th>
-                        <th>Fruta (S/)</th>
-                        <th>Gastos (S/)</th>
-                        <th>Estado</th>
-                        <th style="text-align:right">Acciones</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach($solicitudes as $row): 
-                        $statusClass = ($row['estado'] == 'abierto') ? 'abierto' : 'terminado';
-                        $provShow = !empty($row['proveedores_detalle']) ? $row['proveedores_detalle'] : $row['proveedor_directo'];
-                    ?>
-                    <tr>
-                        <td data-label="Operación">
-                            <div class="cell-code"><?php echo $row['codigo_unico']; ?></div>
-                            <span class="cell-date"><?php echo date('d/m/y H:i', strtotime($row['fecha_registro'])); ?></span>
-                        </td>
-
-                        <td data-label="Proveedor">
-                            <div class="cell-prov"><?php echo $provShow; ?></div>
-                            <div style="font-size:0.75rem; color:#94a3b8;">👤 <?php echo explode(' ', $row['autor'])[0]; ?></div>
-                        </td>
-
-                        <td data-label="Peso Neto">
-                            <div class="cell-kilo"><?php echo number_format($row['total_kilos_neto'], 2); ?> kg</div>
-                        </td>
-
-                        <td data-label="Fruta (S/)">
-                            <div class="cell-money">S/ <?php echo number_format($row['importe_total_fruta'], 2); ?></div>
-                        </td>
-
-                        <td data-label="Gastos (S/)">
-                            <div class="cell-gastos">S/ <?php echo number_format($row['total_gastos'], 2); ?></div>
-                        </td>
-
-                        <td data-label="Estado">
-                            <span class="badge <?php echo $statusClass; ?>"><?php echo strtoupper($row['estado']); ?></span>
-                        </td>
-
-                        <td data-label="Acciones">
-                            <div class="btn-group">
-                                <a href="admin_ver.php?id=<?php echo $row['id']; ?>" class="action-btn btn-ver">
-                                    👁️ Ver
-                                </a>
-                                
-                                <?php if($row['estado'] == 'abierto'): ?>
-                                    <a href="admin_estado.php?id=<?php echo $row['id']; ?>&accion=cerrar" 
-                                       class="action-btn btn-cerrar" 
-                                       onclick="return confirm('¿Bloquear esta operación?')">
-                                       🔒 Cerrar
-                                    </a>
-                                <?php else: ?>
-                                    <a href="admin_estado.php?id=<?php echo $row['id']; ?>&accion=abrir" 
-                                       class="action-btn btn-abrir"
-                                       onclick="return confirm('¿Reabrir esta operación?')">
-                                       🔓 Abrir
-                                    </a>
-                                <?php endif; ?>
-                            </div>
-                        </td>
-                    </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-
-        <?php if(empty($solicitudes)): ?>
-            <div style="text-align:center; padding:50px; color:#94a3b8;">
-                <p style="font-size:1.2rem;">📭 No se encontraron resultados.</p>
-            </div>
-        <?php endif; ?>
-
-        <?php if ($total_paginas > 1): ?>
-        <div class="pagination">
-            <?php 
-            if ($pagina_actual > 1) {
-                echo '<a href="?pagina='.($pagina_actual-1).'&q='.urlencode($busqueda).'" class="page-link">←</a>';
-            } else {
-                echo '<span class="page-link disabled">←</span>';
-            }
-
-            $rango = 2; 
-            for ($i = 1; $i <= $total_paginas; $i++) {
-                if ($i == 1 || $i == $total_paginas || ($i >= $pagina_actual - $rango && $i <= $pagina_actual + $rango)) {
-                    $active = ($i == $pagina_actual) ? 'active' : '';
-                    echo '<a href="?pagina='.$i.'&q='.urlencode($busqueda).'" class="page-link '.$active.'">'.$i.'</a>';
-                } elseif ($i == $pagina_actual - $rango - 1 || $i == $pagina_actual + $rango + 1) {
-                    echo '<span class="page-link disabled">...</span>';
-                }
-            }
-
-            if ($pagina_actual < $total_paginas) {
-                echo '<a href="?pagina='.($pagina_actual+1).'&q='.urlencode($busqueda).'" class="page-link">→</a>';
-            } else {
-                echo '<span class="page-link disabled">→</span>';
-            }
-            ?>
-        </div>
-        <div style="text-align:center; color:#94a3b8; font-size:0.8rem; margin-top:10px;">
-            Pág <?php echo $pagina_actual; ?> de <?php echo $total_paginas; ?>
-        </div>
-        <?php endif; ?>
-
     </div>
+
+    <div class="main-container">
+        
+        <div class="welcome-text animate__animated animate__fadeIn">
+            <div class="welcome-title">Panel General</div>
+            <div class="welcome-subtitle">Centro de Operaciones</div>
+        </div>
+
+        <div class="row g-4 justify-content-center animate__animated animate__fadeInUp">
+            
+            <div class="col-12 col-md-6 col-lg-4">
+                <a href="admin_panel_acopios.php" class="module-card card-acopio">
+                    <div class="icon-wrapper">
+                        <i class="bi bi-truck"></i>
+                    </div>
+                    <div>
+                        <div class="module-title">Gestión de Acopios</div>
+                        <div class="module-desc">Control de cargas, liquidaciones, proveedores y reportes.</div>
+                    </div>
+                </a>
+            </div>
+
+            <div class="col-12 col-md-6 col-lg-4">
+                <a href="../contabilidad/index.php" class="module-card card-nomina">
+                    <div class="icon-wrapper">
+                        <i class="bi bi-people-fill"></i>
+                    </div>
+                    <div>
+                        <div class="module-title">Nóminas y RRHH</div>
+                        <div class="module-desc">Administración de personal, asistencia y pagos.</div>
+                    </div>
+                </a>
+            </div>
+
+            <div class="col-12 col-md-6 col-lg-4">
+                <a href="#" class="module-card card-config" onclick="Swal.fire({title:'Próximamente', text:'Módulo en construcción', icon:'info', confirmButtonColor:'var(--gf-primary)'}); return false;">
+                    <div class="icon-wrapper">
+                        <i class="bi bi-gear-wide-connected"></i>
+                    </div>
+                    <div>
+                        <div class="module-title">Configuración</div>
+                        <div class="module-desc">Gestión de usuarios, roles y parámetros del sistema.</div>
+                    </div>
+                </a>
+            </div>
+
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
 </body>
 </html>

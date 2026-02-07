@@ -1,0 +1,20 @@
+[2026-02-06 21:59:36] --------------------------------------------------
+[2026-02-06 21:59:36] INICIO DE SOLICITUD: POST
+[2026-02-06 21:59:36] Acción recibida: recalcular
+[2026-02-06 21:59:36] ID Nómina: 2
+[2026-02-06 21:59:36] JSON Válido. Procesando días...
+[2026-02-06 21:59:36] INTENTANDO SQL: UPDATE nomina_procesada SET 
+                dias_trabajados = '3',
+                horas_normales_total = '20:00',
+                horas_25_total = '01:00',
+                horas_35_total = '00:00',
+                horas_nocturnas_total = '00:00',
+                monto_base_afp = '101.60465625',
+                monto_afp = '11.552449415625',
+                monto_neto_final = '149.73466350104',
+                bono_beta = '33.9',
+                bono_extra_6 = '0.94129',
+                bono_nocturno = '0',
+                detalle_horarios = ''
+                WHERE id_nomina = 2
+[2026-02-06 21:59:36] RESULTADO: ERROR SQL -> 

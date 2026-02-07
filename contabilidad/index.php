@@ -1,31 +1,31 @@
 <?php 
-// 1. CONFIGURACIÓN REGIONAL Y CONEXIÓN
+// 1. INICIAR SESIÓN Y CONFIGURACIÓN
 if (session_status() === PHP_SESSION_NONE) session_start();
 
-// Forzar zona horaria de Perú
+// Forzar zona horaria
 date_default_timezone_set('America/Lima');
+
+// 2. CONEXIÓN A BASE DE DATOS DE CONTABILIDAD
 require_once __DIR__ . '/config/db.php'; 
 
-// 2. CAPTURAR USUARIO Y VISTA
-$usuario_actual = $_SESSION['nombre_usuario'] ?? 'Administrador'; // Ajusta 'nombre_usuario' según tu login real
+// 3. CAPTURAR VISTA ACTUAL
 $view = $_GET['view'] ?? 'inicio';
-
-// Compatibilidad con enlaces antiguos
+// Compatibilidad
 if ($view === 'config') $view = 'configuracion';
 if ($view === 'lista') $view = 'lista_personal';
 
-// 3. GENERAR FECHA EN ESPAÑOL
+// 4. GENERAR FECHA
 $meses_es = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
 $fecha_hoy = date('d') . " de " . $meses_es[date('n') - 1] . " de " . date('Y');
 
-// 4. DATOS PARA EL DASHBOARD (Solo inicio)
+// 5. DATOS DASHBOARD
 $total_p = 0; $total_a = 0;
-if($view == 'inicio' && isset($conexion)) {
-    $res_p = mysqli_query($conexion, "SELECT COUNT(*) as t FROM trabajadores WHERE estado='ACTIVO'");
-    $total_p = ($res_p) ? mysqli_fetch_assoc($res_p)['t'] : 0;
+if($view == 'inicio' && isset($conexion) && !$conexion->connect_error) {
+    $res_p = @mysqli_query($conexion, "SELECT COUNT(*) as t FROM trabajadores WHERE estado='ACTIVO'");
+    if($res_p) $total_p = mysqli_fetch_assoc($res_p)['t'];
     
-    $res_a = mysqli_query($conexion, "SELECT COUNT(*) as t FROM areas");
-    $total_a = ($res_a) ? mysqli_fetch_assoc($res_a)['t'] : 0;
+    $res_a = @mysqli_query($conexion, "SELECT COUNT(*) as t FROM areas");
+    if($res_a) $total_a = mysqli_fetch_assoc($res_a)['t'];
 }
 ?>
 <!DOCTYPE html>
@@ -33,7 +33,7 @@ if($view == 'inicio' && isset($conexion)) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gold Fruits | Gestión RRHH</title>
+    <title>Gold Fruits | Gestión de Nóminas</title>
     
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
@@ -62,43 +62,23 @@ if($view == 'inicio' && isset($conexion)) {
             overflow-x: hidden; 
         }
 
-        /* --- SIDEBAR FLEXIBLE & RESPONSIVO --- */
+        /* --- SIDEBAR --- */
         .sidebar {
             width: var(--sidebar-width);
             min-width: var(--sidebar-width); 
             height: 100vh; 
-            position: sticky;
-            top: 0;
+            position: sticky; top: 0;
             background: linear-gradient(180deg, var(--gf-green) 0%, #0f2b15 100%);
             color: white;
-            display: flex;
-            flex-direction: column;
+            display: flex; flex-direction: column;
             z-index: 1050;
             transition: all 0.3s ease;
             box-shadow: 4px 0 15px rgba(0,0,0,0.15);
         }
 
-        .sidebar-header {
-            padding: 20px 15px;
-            text-align: center;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-            flex-shrink: 0;
-        }
-        
-        .sidebar-menu {
-            flex-grow: 1;
-            overflow-y: auto;
-            padding: 15px;
-            scrollbar-width: thin;
-            scrollbar-color: rgba(255,255,255,0.3) transparent;
-        }
-        
-        .sidebar-footer {
-            padding: 20px 15px;
-            border-top: 1px solid rgba(255,255,255,0.1);
-            flex-shrink: 0;
-            background: rgba(0,0,0,0.1);
-        }
+        .sidebar-header { padding: 20px 15px; text-align: center; border-bottom: 1px solid rgba(255,255,255,0.1); flex-shrink: 0; }
+        .sidebar-menu { flex-grow: 1; overflow-y: auto; padding: 15px; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.3) transparent; }
+        .sidebar-footer { padding: 20px 15px; border-top: 1px solid rgba(255,255,255,0.1); flex-shrink: 0; background: rgba(0,0,0,0.1); }
 
         .logo-img { width: 100px; transition: transform 0.3s; filter: drop-shadow(0 4px 6px rgba(0,0,0,0.1)); }
         .logo-img:hover { transform: scale(1.05); }
@@ -110,38 +90,22 @@ if($view == 'inicio' && isset($conexion)) {
         }
         .nav-link i { font-size: 1.2rem; margin-right: 12px; width: 25px; text-align: center; opacity: 0.9; }
         .nav-link:hover { background: rgba(255,255,255,0.15); color: white; transform: translateX(5px); }
-        .nav-link.active { 
-            background: var(--gf-orange); color: white; 
-            box-shadow: 0 4px 15px rgba(244, 157, 26, 0.4); font-weight: 700;
-        }
+        .nav-link.active { background: var(--gf-orange); color: white; box-shadow: 0 4px 15px rgba(244, 157, 26, 0.4); font-weight: 700; }
 
-        /* --- CONTENIDO PRINCIPAL --- */
-        .main-wrapper {
-            flex: 1;
-            min-width: 0; 
-            padding: 25px;
-            display: flex;
-            flex-direction: column;
-            transition: all 0.3s ease;
-        }
+        /* --- CONTENIDO --- */
+        .main-wrapper { flex: 1; min-width: 0; padding: 25px; display: flex; flex-direction: column; transition: all 0.3s ease; }
 
         .glass-container {
-            background: rgba(255, 255, 255, 0.95);
-            backdrop-filter: blur(12px);
-            border-radius: 20px;
-            border: 1px solid rgba(255,255,255,0.6);
-            box-shadow: 0 10px 40px rgba(27, 77, 46, 0.08);
-            padding: 25px;
-            width: 100%;
-            overflow: hidden;
+            background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(12px);
+            border-radius: 20px; border: 1px solid rgba(255,255,255,0.6);
+            box-shadow: 0 10px 40px rgba(27, 77, 46, 0.08); padding: 25px;
+            width: 100%; overflow: hidden;
         }
 
-        /* DASHBOARD */
         .welcome-banner {
             background: linear-gradient(135deg, var(--gf-light-green), var(--gf-green));
             border-radius: 20px; padding: 30px; color: white;
-            box-shadow: 0 10px 25px rgba(27, 77, 46, 0.15);
-            margin-bottom: 25px; position: relative; overflow: hidden;
+            box-shadow: 0 10px 25px rgba(27, 77, 46, 0.15); margin-bottom: 25px; position: relative; overflow: hidden;
         }
         .metric-card {
             background: white; border-radius: 20px; padding: 25px;
@@ -151,36 +115,22 @@ if($view == 'inicio' && isset($conexion)) {
         .metric-card:hover { transform: translateY(-5px); box-shadow: 0 15px 30px rgba(0,0,0,0.08); }
         .metric-value { font-size: 2.8rem; font-weight: 800; color: var(--gf-green); margin: 10px 0; }
 
-        /* Ajuste Tablas */
-        .table-responsive { border-radius: 12px; overflow-x: auto; }
-
-        /* --- RESPONSIVE MÓVIL --- */
+        /* --- RESPONSIVE --- */
         .mobile-nav-toggle { display: none; }
         .sidebar-overlay { display: none; }
 
         @media (max-width: 991px) {
-            .sidebar {
-                position: fixed; left: -100%; top: 0; bottom: 0;
-                width: 280px; height: 100vh;
-                box-shadow: 5px 0 25px rgba(0,0,0,0.3);
-            }
+            .sidebar { position: fixed; left: -100%; top: 0; bottom: 0; width: 280px; height: 100vh; box-shadow: 5px 0 25px rgba(0,0,0,0.3); }
             .sidebar.active { left: 0; }
-            
             .main-wrapper { width: 100%; padding: 15px; }
-
             .mobile-nav-toggle { display: block; margin-bottom: 20px; }
-            
             .btn-menu-mobile {
-                background: white; color: var(--gf-green); border: none; 
-                padding: 10px 20px; border-radius: 50px; font-weight: 700; 
-                box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-                display: flex; align-items: center; gap: 10px;
+                background: white; color: var(--gf-green); border: none; padding: 10px 20px; border-radius: 50px;
+                font-weight: 700; box-shadow: 0 4px 15px rgba(0,0,0,0.1); display: flex; align-items: center; gap: 10px;
             }
-
             .sidebar-overlay {
-                position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-                background: rgba(0,0,0,0.6); z-index: 1040;
-                backdrop-filter: blur(4px); display: none;
+                position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6);
+                z-index: 1040; backdrop-filter: blur(4px); display: none;
             }
             .sidebar-overlay.active { display: block; }
         }
@@ -193,7 +143,7 @@ if($view == 'inicio' && isset($conexion)) {
     <aside class="sidebar" id="sidebar">
         <div class="sidebar-header">
             <img src="https://i.ibb.co/dJJSS7W0/Gemini-Generated-Image-52frmw52frmw52fr-removebg-preview.png" alt="Gold Fruits" class="logo-img">
-            <div class="mt-2 small text-uppercase tracking-wider opacity-75 fw-bold" style="font-size: 0.7rem;">Gestión v3.0</div>
+            <div class="mt-2 small text-uppercase tracking-wider opacity-75 fw-bold" style="font-size: 0.7rem;">Gestión de Nóminas</div>
         </div>
         
         <div class="sidebar-menu">
@@ -235,9 +185,6 @@ if($view == 'inicio' && isset($conexion)) {
         </div>
 
         <div class="sidebar-footer">
-            <div class="mb-3 text-center opacity-75 small">
-                <i class="bi bi-person-circle me-1"></i> <?= htmlspecialchars($usuario_actual) ?>
-            </div>
             <a href="../logout.php" class="nav-link text-white bg-danger bg-opacity-25 justify-content-center fw-bold shadow-sm">
                 <i class="bi bi-box-arrow-left"></i> CERRAR SESIÓN
             </a>
@@ -259,8 +206,8 @@ if($view == 'inicio' && isset($conexion)) {
                         <span class="badge bg-white text-success mb-3 px-3 py-2 rounded-pill shadow-sm text-uppercase fw-bold" style="font-size: 0.7rem;">
                             <i class="bi bi-calendar-event me-2"></i><?= $fecha_hoy ?>
                         </span>
-                        <h1 class="fw-bold mb-1">¡Hola, <?= htmlspecialchars($usuario_actual) ?>!</h1>
-                        <p class="opacity-75 mb-0">Bienvenido al panel de control.</p>
+                        <h1 class="fw-bold mb-1">Bienvenido</h1>
+                        <p class="opacity-75 mb-0">Sistema de Gestión de Nóminas y RRHH.</p>
                     </div>
                     <div class="d-none d-md-block opacity-25">
                         <i class="bi bi-flower1" style="font-size: 4rem;"></i>
