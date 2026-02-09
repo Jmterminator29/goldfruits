@@ -10,37 +10,45 @@ $root = $_SERVER['DOCUMENT_ROOT'];
 if(file_exists($root.'/contabilidad/config/db.php')) {
     include_once $root.'/contabilidad/config/db.php';
 } else {
-    // Fallback de ruta
     include_once '../config/db.php'; 
 }
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    http_response_code(405);
     die("Error: Método no permitido.");
 }
 
 // 1. RECIBIR DATOS GLOBALES
 $estado_pago = $_POST['estado_pago'] ?? 'BORRADOR';
-$mes         = $_POST['mes_pago'] ?? '';
-$periodo     = $_POST['periodo_pago'] ?? '';
-$anio        = date('Y');
+$mes         = isset($_POST['mes_pago']) ? trim($_POST['mes_pago']) : '';
+$periodo     = isset($_POST['periodo_pago']) ? trim($_POST['periodo_pago']) : '';
+$anio        = isset($_POST['anio_pago']) ? (int)$_POST['anio_pago'] : (int)date('Y');
 $fecha_hoy   = date('Y-m-d H:i:s');
 
-// VALIDACIÓN: Si no llegan mes o periodo, detenemos todo para no ensuciar la BD
+// 2. VALIDACIÓN CRÍTICA: Bloquear inserción si faltan datos globales
 if (empty($mes) || empty($periodo)) {
-    die("Error Crítico: Los datos de Mes o Periodo están vacíos. No se guardó nada.");
+    die("Error Crítico: El Mes o el Periodo no llegaron al servidor. No se guardó nada para evitar datos corruptos.");
 }
 
+
+// Validación básica de mes (1-12) para evitar guardar en un periodo inválido
+$mes_int = (int)$mes;
+if ($mes_int < 1 || $mes_int > 12) {
+    die("Error Crítico: Mes inválido. No se guardó nada.");
+}
 if (isset($_POST['trab']) && is_array($_POST['trab'])) {
     
     $procesados = 0;
     $errores    = 0;
+    $msg_error  = "";
+    $error_rows = [];
 
     foreach ($_POST['trab'] as $t) {
         // --- A. Sanitización ---
         $id_trabajador = intval($t['id']);
-        $id_nomina     = intval($t['id_nomina'] ?? 0); // ID para saber si es UPDATE
+        $id_nomina     = intval($t['id_nomina'] ?? 0); // ID que viene del Frontend
 
-        // Valores
+        // Datos Numéricos y Textos
         $dias          = intval($t['dias'] ?? 0);
         $hn            = mysqli_real_escape_string($conexion, $t['horas_n'] ?? '00:00');
         $h25           = mysqli_real_escape_string($conexion, $t['horas_25'] ?? '00:00');
@@ -55,10 +63,13 @@ if (isset($_POST['trab']) && is_array($_POST['trab'])) {
         $bono_6        = floatval($t['bono_6'] ?? 0);
         $bono_nocturno = floatval($t['bono_nocturno'] ?? 0);
         
-        $json_horarios = mysqli_real_escape_string($conexion, $t['json_horarios'] ?? '{}');
-
-        // --- B. VERIFICACIÓN DE EXISTENCIA (Anti-Duplicados) ---
-        // Si el frontend dice que es nuevo (ID 0), verificamos en BD por si acaso ya existe
+        $json_horarios_raw = $t['json_horarios'] ?? '{}';
+        // Evitar guardar JSON corrupto
+        $tmp = json_decode($json_horarios_raw, true);
+        if ($json_horarios_raw !== '{}' && $tmp === null && json_last_error() !== JSON_ERROR_NONE) { $json_horarios_raw = '{}'; }
+        $json_horarios = mysqli_real_escape_string($conexion, $json_horarios_raw);
+// --- B. VERIFICACIÓN DE EXISTENCIA (DOBLE SEGURIDAD) ---
+        // Si el frontend dice que es nuevo (ID 0), verificamos en BD si YA existe para este mes/periodo
         if ($id_nomina == 0) {
             $check_sql = "SELECT id_nomina FROM nomina_procesada 
                           WHERE id_trabajador = '$id_trabajador' 
@@ -110,16 +121,18 @@ if (isset($_POST['trab']) && is_array($_POST['trab'])) {
             $procesados++;
         } else {
             $errores++;
+            $msg_error = mysqli_error($conexion);
+            $error_rows[] = "ID_TRAB=$id_trabajador | ID_NOMINA=$id_nomina | " . $msg_error;
         }
     }
     
     if ($errores > 0) {
-        echo "Proceso terminado con alertas. Guardados: $procesados. Errores: $errores.";
+        echo "Error: Proceso con alertas. Guardados: $procesados. Errores: $errores. Detalle: " . (count($error_rows)? implode(" || ", $error_rows) : $msg_error);
     } else {
-        echo "ÉXITO: Se procesaron $procesados trabajadores correctamente.";
+        echo "ÉXITO: Se procesaron $procesados registros correctamente.";
     }
 
 } else {
-    echo "Error: No llegaron datos.";
+    echo "Error: No llegaron datos del formulario.";
 }
 ?>
